@@ -248,7 +248,7 @@ function Update-BitWardenPermissions {
 
     BEGIN {
         $CORRECT_USER_PERMISSIONS = "bitwarden"
-        $CORRECT_GROUP_PERMISSIONS = "bitwarden"
+        $CORRECT_GROUP_PERMISSIONS = "docker"
         $CORRECT_Unix_MODE = "-rwxr--r--"
         $SCRIPT_FILE = Get-Item -Path $Path
         $Success = $false
