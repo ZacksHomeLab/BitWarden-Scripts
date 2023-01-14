@@ -4,17 +4,50 @@ function New-ZHLBWBackupName {
     This function generates a backup name for your BitWarden backup.
 .DESCRIPTION
     This function generates a backup name for your BitWarden backup.
+.PARAMETER Directory
+    Provide the directory for where the file will reside (if applicable)
 .EXAMPLE
     New-ZHLBWBackupName
     
     Generate a Backup name for your BitWarden Backup. (Example name: BitWardenBackup-2022-01-13_20-33-47.tar)
+.EXAMPLE
+    New-ZHLBWBackupName -Directory '/tmp/'
+
+    This example would generate a directory + file name such as '/tmp/BitWardenBackup-2022-01-13_20-33-47.tar'.
 .INPUTS
-    None
+    System.string
 .OUTPUTS
     System.string
 #>
+    [cmdletbinding()]
+    param (
+        [parameter(Mandatory=$false,
+            ValueFromPipelineByPropertyName)]
+        [ValidateScript({Test-path -Path $_})]
+        [string]$Directory
+    )
+    begin {
+        $FULL_FILE_NAME = $null
+    }
+
+    process {
+        # If a directory was given, make sure teh directory doesn't have extra '/'s in its name.
+        if ($PSBoundParameters.containskey('Directory')) {
+
+            # Remove the extra '/' if applicable
+            if ($Directory[-1] -eq '/') {
+                $Directory = $Directory.Substring(0,$Directory.Length-1)
+            }
+            # Example name: /tmp/Extract-BitWardenBackup-2023-01-13_20-55-23
+            $FULL_FILE_NAME = $Directory + "/" + "BitWardenBackup-$((Get-Date).toString('yyyy-MM-dd_HH-mm-ss')).tar"
+        } else {
+            # Directory wasn't given
+            $FULL_FILE_NAME = "BitWardenBackup-$((Get-Date).toString('yyyy-MM-dd_HH-mm-ss')).tar"
+        }
+    }
+
     end {
-        return "BitWardenBackup-$((Get-Date).toString('yyyy-MM-dd_HH-mm-ss')).tar"
+        return $FULL_FILE_NAME
     }
 }
 
@@ -24,18 +57,51 @@ function New-ZHLBWBackupDecryptionName {
     This function will generate a file name which will be used for decrypting the backup archive.
 .DESCRIPTION
     This function will generate a file name which will be used for decrypting the backup archive. Example Name: /tmp/Decrypt-BitWardenBackup-2023-01-13_20-55-23
+.PARAMETER Directory
+    Provide the directory for where the file will reside (if applicable)
 .EXAMPLE
     New-ZHLBWBackupDecryptionName
     
     This example would generate a file name such as /tmp/Decrypt-BitWardenBackup-2023-01-13_20-55-23
+.EXAMPLE
+    New-ZHLBWBackupDecryptionName -Directory '/tmp/'
+
+    This example would generate a directory + file name such as '/tmp/Decrypt-BitWardenBackup-2023-01-13_20-55-23'.
 .INPUTS
-    None
+    System.String
 .OUTPUTS
     System.String
 #>
 
+    [cmdletbinding()]
+    param (
+        [parameter(Mandatory=$false,
+            ValueFromPipelineByPropertyName)]
+        [ValidateScript({Test-path -Path $_})]
+        [string]$Directory
+    )
+    begin {
+        $FULL_FILE_NAME = $null
+    }
+
+    process {
+        # If a directory was given, make sure teh directory doesn't have extra '/'s in its name.
+        if ($PSBoundParameters.containskey('Directory')) {
+
+            # Remove the extra '/' if applicable
+            if ($Directory[-1] -eq '/') {
+                $Directory = $Directory.Substring(0,$Directory.Length-1)
+            }
+            # Example name: /tmp/Extract-BitWardenBackup-2023-01-13_20-55-23
+            $FULL_FILE_NAME = $Directory + "/" + "Decrypt-BitWardenBackup-$((Get-Date).toString('yyyy-MM-dd_HH-mm-ss'))"
+        } else {
+            # Directory wasn't given
+            $FULL_FILE_NAME = "Decrypt-BitWardenBackup-$((Get-Date).toString('yyyy-MM-dd_HH-mm-ss'))"
+        }
+    }
+
     end {
-        return "/tmp/Decrypt-BitWardenBackup-$((Get-Date).toString('yyyy-MM-dd_HH-mm-ss'))"
+        return $FULL_FILE_NAME
     }
 }
 
@@ -45,17 +111,47 @@ function New-ZHLBWBackupExtractionName {
     This function will generate a directory name which will be used for extracting the backup archive.
 .DESCRIPTION
     This function will generate a directory name which will be used for extracting the backup archive. Example Name: /tmp/Extract-BitWardenBackup-2023-01-13_20-55-23
+.PARAMETER Directory
+    Provide the directory for where the file will reside (if applicable)
 .EXAMPLE
     New-ZHLBWBackupExtractionName
     
-    This example would generate a directory name such as /tmp/Extract-BitWardenBackup-2023-01-13_20-55-23
+    This example would generate a directory name such as Extract-BitWardenBackup-2023-01-13_20-55-23
+.EXAMPLE
+    New-ZHLBWBackupExtractionName -Directory '/tmp/'
+
+    This example would generate a directory + file name such as '/tmp/Extract-BitWardenBackup-2023-01-13_20-55-23'.
 .INPUTS
-    None
+    System.String
 .OUTPUTS
     System.String
 #>
+    [cmdletbinding()]
+    param (
+        [parameter(Mandatory=$false,
+            ValueFromPipelineByPropertyName)]
+        [ValidateScript({Test-path -Path $_})]
+        [string]$Directory
+    )
+    begin {
+        $FULL_FILE_NAME = $null
+    }
+    process {
+        if ($PSBoundParameters.containskey('Directory')) {
+
+            # Remove the extra '/' if applicable
+            if ($Directory[-1] -eq '/') {
+                $Directory = $Directory.Substring(0,$Directory.Length-1)
+            }
+            # Example name: /tmp/Extract-BitWardenBackup-2023-01-13_20-55-23
+            $FULL_FILE_NAME = $Directory + "/" + "Extract-BitWardenBackup-$((Get-Date).toString('yyyy-MM-dd_HH-mm-ss'))"
+        } else {
+            # Directory wasn't given
+            $FULL_FILE_NAME = "Extract-BitWardenBackup-$((Get-Date).toString('yyyy-MM-dd_HH-mm-ss'))"
+        }
+    }
     end {
-        return "/tmp/Extract-BitWardenBackup-$((Get-Date).toString('yyyy-MM-dd_HH-mm-ss'))"
+        return $FULL_FILE_NAME
     }
 }
 
@@ -259,12 +355,14 @@ function Unlock-ZHLBWBackup {
     The location of the password file to encrypt said backup.
 .PARAMETER PasswordPhrase
     The password phase that'll encrypt said backup.
+.PARAMETER DecryptLocation
+    The full path & file name of the decrypted backup (e.g., /tmp/Decrypt-BitWardenBackup-2023-01-13_20-55-23)
 .EXAMPLE
     UnLock-ZHLBWBackup -BackupFile '/backups/BitWardenBackup-2022-01-13_20-33-47.tar' -PasswordFile '/opt/bitwarden/password_file'
     
     Decrypt the provided backup file with the provided password file.
 .EXAMPLE
-    UnLock-ZHLBWBackup -BackupFile '/backups/BitWardenBackup-2022-01-13_20-33-47.tar' -PasswordPhrase ('PASSWORD_HERE' | ConvertTo-SecureString -AsPlainText)
+    UnLock-ZHLBWBackup -BackupFile '/backups/BitWardenBackup-2022-01-13_20-33-47.tar' -PasswordPhrase ('PASSWORD_HERE' | ConvertTo-SecureString -AsPlainText) -DecryptLocation (New-ZHLBWBackupDecryptionName)
 
     Decrypt the provided backup file with the provided password phrase.
 .INPUTS
@@ -293,11 +391,23 @@ function Unlock-ZHLBWBackup {
             Position=1,
             ValueFromPipelineByPropertyName)]
         [ValidateNotNullOrEmpty()]
-        [System.Security.SecureString]$Passphrase
+        [System.Security.SecureString]$Passphrase,
+
+        [parameter(Mandatory=$false,
+            Position=2,
+            ValueFromPipelineByPropertyName,
+            HelpMessage="Enter the full path and file name for the decrypted backup. Must end with .tar")]
+            [ValidateScript({$_ -match "(.*)\.tar$"})]
+        [string]$DecryptLocation
     )
 
     begin {
-        $DECRYPT_LOCATION = New-ZHLBWBackupDecryptionName
+        # If a location wasn't given, create one
+        if (-not $PSBoundParameters.containskey('DecryptLocation')) {
+            $DECRYPT_LOCATION = New-ZHLBWBackupDecryptionName
+        } else {
+            $DECRYPT_LOCATION = $DecryptLocation
+        }
     }
 
     process {
@@ -322,7 +432,35 @@ function Unlock-ZHLBWBackup {
         Write-Verbose "Unlock-ZHLBWBackup: Successfully decrypted backup $BackupFile. File is located at $DECRYPT_LOCATION"
     }
 }
-
+function Get-ZHLBWExtractedItems {
+<#
+.Synopsis
+    This function will extract contents of a BitWarden Archive into an extraction location.
+.DESCRIPTION
+    This function will extract contents of a BitWarden Archive into an extraction location.
+.PARAMETER ExtractLocation
+    The location that holds the extracted BItWarden Backup items.
+.EXAMPLE
+    Get-ZHLBWExtractedItems -ExtractLocation '/opt/bitwarden-2022-01-13_20-33-47'
+    
+    The above will gather the contents within '/opt/bitwarden-2022-01-13_20-33-47'.
+.INPUTS
+    System.String
+.OUTPUTS
+    System.Object[]
+#>
+    [cmdletbinding()]
+    param (
+        [parameter(Mandatory,
+            ValueFromPipelineByPropertyName)]
+            [ValidateScript({Test-Path -Path $_})]
+        [string]$ExtractLocation
+    )
+    
+    end {
+        return (Get-ChildItem -Path $ExtractLocation -Recurse)
+    }
+}
 function Expand-ZHLBWBackup {
 <#
 .Synopsis
@@ -331,10 +469,16 @@ function Expand-ZHLBWBackup {
     This function will extract contents of a BitWarden Archive into an extraction location.
 .PARAMETER ArchiveFile
     The location of the BitWarden Backup Archive file.
+.PARAMETER ExtractLocation
+    The location to store said extracted items.
 .EXAMPLE
     Expand-ZHLBWBackup -ArchiveFile '/backups/BitWardenBackup-2022-01-13_20-33-47.tar'
     
     The above will extract the contents of BitWardenBackup-2022-01-13_20-33-47.tar into a generated Extraction Directory.
+.EXAMPLE
+    Expand-ZHLBWBackup -ArchiveFile '/backups/BitWardenBackup-2022-01-13_20-33-47.tar' -ExtractLocation '/opt/bitwarden-2022-01-13_20-33-47'
+    
+    The above will extract the contents of BitWardenBackup-2022-01-13_20-33-47.tar into directory /opt/bitwarden-2022-01-13_20-33-47
 .INPUTS
     System.String
 .OUTPUTS
@@ -344,15 +488,28 @@ function Expand-ZHLBWBackup {
     param (
         [parameter(Mandatory,
             Position=0,
-            ValueFromPipelineByPropertyName,
-            ValueFromPipeline)]
+            ValueFromPipelineByPropertyName)]
             [ValidateScript({Test-Path -Path $_})]
-        [string]$ArchiveFile
+        [string]$ArchiveFile,
+
+        [parameter(Mandatory=$false,
+            Position=1,
+            ValueFromPipelineByPropertyName)]
+        [string]$ExtractLocation
     )
 
     begin {
-        # Generate a new Directory Name, which be the location that will house the extracted items.
-        $EXTRACT_DIRECTORY = New-ZHLBWBackupExtractionName
+
+        # If an Extract location wasn't given, create one
+        if (-not $PSBoundParameters.containskey('ExtractLocation')) {
+            $EXTRACT_DIRECTORY = New-ZHLBWBackupExtractionName
+        } else {
+            # As this has to be a directory, we'll need to check for trailing '/'.
+            if ($ExtractLocation[-1] -eq '/' -or $ExtractLocation[-1] -eq '\') {
+                $ExtractLocation = $ExtractLocation.Substring(0,$ExtractLocation.Length-1)
+            }
+            $EXTRACT_DIRECTORY = $ExtractLocation
+        }
     }
 
     process {
@@ -372,11 +529,8 @@ function Expand-ZHLBWBackup {
         Write-Verbose "Expand-ZHLBWBackup: Attempting to extract $ArchiveFile to extract location $EXTRACT_DIRECTORY"
         tar --extract -f $ArchiveFile --directory $EXTRACT_DIRECTORY
 
-        # Verify extraction exists
-        $ExtractedItems = Get-ChildItem -Path $EXTRACT_DIRECTORY -Recurse -ErrorAction SilentlyContinue
-
         # Verify if we have any items extracted
-        if ($null -eq $ExtractedItems) {
+        if (-not $?) {
             Write-Error "Expand-ZHLBWBackup: Doesn't appear the extraction succeeded."
             break
         }

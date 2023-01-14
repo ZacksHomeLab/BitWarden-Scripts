@@ -116,7 +116,7 @@ BEGIN {
     # Example BitWarden Directory: '/opt/bitwarden'
     $BITWARDEN_DIR = $BitWardenDir
 
-    # Our powershell script we use to create a BitWarden backup
+    # Store the location of our powershell script we use to create a BitWarden backup
     $BITWARDEN_BACKUP_SCRIPT = $BackupScriptLocation
 
     # Example Current BitWarden Directory: /opt/bitwarden/bitwarden.sh
@@ -161,6 +161,7 @@ BEGIN {
 
     #region ExitCodes
     $exitcode_NoUPDATE_NEEDED = 0
+    $exitcode_NotRoot = 7
     $exitcode_MissingZHLBitWardenModule = 8
     $exitcode_NoScriptURL = 9
     $exitcode_FailCreatingTempDirectory = 10
@@ -184,41 +185,35 @@ BEGIN {
 
     #region functions
     function Write-Log {
-        [CmdletBinding(DefaultParameterSetName = 'Default')]
-        param
-        (
-            [parameter(Mandatory = $false,
-                        Position = 0)]
-            [string]$Path = $script:LOG_FILE,
-            [Parameter(Position = 1,
-                        Mandatory = $true,
-                        ParameterSetName = 'Default')]
+        [CmdletBinding()]
+        param (
+            [Parameter(Mandatory, Position=0)]
+            [ValidateNotNullOrEmpty()]
+            [String]$Message,
+
+            [Parameter(Mandatory=$false, Position=1)]
             [ValidateSet('Verbose', 'Information', 'Warning', 'Error')]
-            [String]$EntryType,
-            [Parameter(Position = 2,
-                        Mandatory = $true,
-                        ParameterSetName = 'Default')]
-            [String]$Message
+            [String]$EntryType = "Information",
+
+            [parameter(Mandatory=$false, Position=2)]
+            [ValidateNotNullOrEmpty()]
+            [string]$Path = $script:LOG_FILE,
         )
         
-        begin
-        {
+        begin {
             
             # Check if the log level an error or an error record was submitted
-            if ($PSCmdlet.ParameterSetName -eq 'Default' -and $EntryType -eq 'Error')
-            {
+            if ($EntryType -eq 'Error') {
                 $ErrorRecord = New-Object -TypeName System.Management.Automation.ErrorRecord -ArgumentList $Message, 'Unknown', 'NotSpecified', $null
             }
         }
         
-        process
-        {
+        process {
             # Output to file
             $Line = "[$EntryType][$((Get-Date).toString('yyyy-MM-dd:hh-mm-ss'))][$env:ComputerName], $Message"
             $Line | Out-File $Path -Append
             
-            switch ($EntryType)
-            {
+            switch ($EntryType) {
                 'Verbose'     { Write-Verbose -Message $Message }
                 'Information' { Write-Output $Message }
                 'Warning'     { Write-Warning -Message $Message }
@@ -232,7 +227,15 @@ BEGIN {
 
 PROCESS {
     #region Preconditions
-    Write-Log -EntryType Information -Message "Main: Checking preconditions before we start..."
+    Write-Log "Main: Checking preconditions before we start..."
+
+    # Check if the user is root
+    if ($PSVersionTable.Platform -eq "Unix") {
+        if ($(whoami) -ne "root") {
+            Write-Log -EntryType Warning -Message "Main: You must run this script as root, stopping."
+            exit $exitcode_NotRoot
+        }
+    }
 
     # Verify if we can import the ZHLBitWarden Module:
     if (-not (Get-Module -Name ZHLBitWarden -ErrorAction SilentlyContinue)) {
@@ -328,11 +331,11 @@ PROCESS {
         $CURRENT_KEYCONNECTOR_ID = Get-KeyConnectorID -DockerFile $DockerFile
     }
 
-    Write-Log -EntryType Information -Message "Main: Current Core ID: $CURRENT_CORE_ID"
-    Write-Log -EntryType Information -Message "Main: Current Web ID: $CURRENT_WEB_ID"
+    Write-Log "Main: Current Core ID: $CURRENT_CORE_ID"
+    Write-Log "Main: Current Web ID: $CURRENT_WEB_ID"
 
     if ($null -ne $CURRENT_KEYCONNECTOR_ID) {
-        Write-Log -EntryType Information -Message "Main: Current KeyConnector ID: $CURRENT_KEYCONNECTOR_ID"
+        Write-Log "Main: Current KeyConnector ID: $CURRENT_KEYCONNECTOR_ID"
     }
     #endregion
 
@@ -341,7 +344,7 @@ PROCESS {
 
     # This will download $BITWARDEN_SCRIPT_URL at path $TEMP_BITWARDEN_SCRIPT_FILE_PATH. The -Path parameter is only used to verify the existence of said out-file path.
     try {
-        Write-Log -EntryType Information -Message "Main: Downloading latest bitwarden script..."
+        Write-Log "Main: Downloading latest bitwarden script..."
         Install-ZHLBWBitWardenScripts -URL $BITWARDEN_SCRIPT_URL -OutFile $TEMP_BITWARDEN_SCRIPT_FILE_PATH -ErrorAction Stop
     } catch {
         Write-Log -EntryType Warning -Message "Main: Failed downloading the BitWarden script at URL $BITWARDEN_SCRIPT_URL due to $_"
@@ -350,7 +353,7 @@ PROCESS {
 
     # Update permissions on the downloaded bitwarden.sh
     try {
-        Write-Log -EntryType Information -Message "Main: Updating permissions on bitwarden script file $TEMP_BITWARDEN_SCRIPT_FILE_PATH..."
+        Write-Log "Main: Updating permissions on bitwarden script file $TEMP_BITWARDEN_SCRIPT_FILE_PATH..."
         Update-ZHLBWScriptPermissions -Path $TEMP_BITWARDEN_SCRIPT_FILE_PATH -ErrorAction stop
     } catch {
         Write-Log -EntryType Warning -Message "Main: Failed updating permissions on script file $TEMP_BITWARDEN_SCRIPT_FILE_PATH."
@@ -365,7 +368,7 @@ PROCESS {
 
     # This will download $BITWARDEN_SCRIPT_URL at path $TEMP_BITWARDEN_SCRIPT_FILE_PATH. The -Path parameter is only used to verify the existence of said out-file path.
     try {
-        Write-Log -EntryType Information -Message "Main: Downloading latest bitwarden run script..."
+        Write-Log "Main: Downloading latest bitwarden run script..."
         Install-ZHLBWBitWardenScripts -URL $BITWARDEN_RUN_SCRIPT_URL -OutFile $TEMP_BITWARDEN_RUN_FILE_PATH -ErrorAction stop
     } catch {
         Write-Log -EntryType Warning -Message "Main: Failed downloading the BitWarden run script at URL $BITWARDEN_RUN_SCRIPT_URL due to $_"
@@ -375,7 +378,7 @@ PROCESS {
 
     # Update permissions on the downloaded run.sh
     try {
-        Write-Log -EntryType Information -Message "Main: Updating permissions on run script $TEMP_BITWARDEN_RUN_FILE_PATH..."
+        Write-Log "Main: Updating permissions on run script $TEMP_BITWARDEN_RUN_FILE_PATH..."
         Update-ZHLBWScriptPermissions -Path $TEMP_BITWARDEN_RUN_FILE_PATH -ErrorAction Stop
     } catch {
         Write-Log -EntryType Warning -Message "Main: Failed updating permissions on run file $TEMP_BITWARDEN_RUN_FILE_PATH."
@@ -385,23 +388,23 @@ PROCESS {
     #endregion
 
     #region Can we update BitWarden?
-    Write-Log -EntryType Information -Message "Main: Checking if we can update..."
+    Write-Log "Main: Checking if we can update..."
     # This will return true if we can update
     $UPDATE_NEEDED = Confirm-ZHLBWUpdate -ConfigFile $ConfigFile -DockerFile $DockerFile -NewScript $TEMP_BITWARDEN_SCRIPT_FILE_PATH
 
     if (-not $UPDATE_NEEDED) {
-        Write-Log -EntryType Information -Message "Main: We do not need to update, removing downloaded files."
+        Write-Log "Main: We do not need to update, removing downloaded files."
         Remove-ZHLBWItems -Items $BW_ITEMS
         exit $exitcode_NoUPDATE_NEEDED
     }
-    Write-Log -EntryType Information -Message "Main: We can update!"
+    Write-Log "Main: We can update!"
     #endregion
 
     #region Create Full BitWarden Backup
 
     # Perform a backup before updating
     if (-not $SkipBackup) {
-        Write-Log -EntryType Information -Message "Main: Attempting to create backup $BACKUP_FILE_NAME before we update..."
+        Write-Log "Main: Attempting to create backup $BACKUP_FILE_NAME before we update..."
 
         # Check if Job 'CreateBackup' exists. If it does, remove it
         if (Get-Job -Name 'CreateBackup' -ErrorAction SilentlyContinue) {
@@ -412,9 +415,9 @@ PROCESS {
         }
 
         # Start the Backup
-        if ($PSBoundParameters.ParameterSetName -eq 'PasswordFile') {
+        if ($PSCmdlet.ParameterSetName -eq 'PasswordFile') {
             Start-Job -Name "CreateBackup" -ScriptBlock {pwsh -File $using:BITWARDEN_BACKUP_SCRIPT -PasswordFile $using:PasswordFile -FinalBackupLocation $using:FinalBackupLocation -All -BackupName $using:BACKUP_FILE_NAME}
-        } elseif ($PSBoundParameters.ParameterSetName -eq 'PasswordPhrase') {
+        } elseif ($PSCmdlet.ParameterSetName -eq 'PasswordPhrase') {
             Start-Job -Name "CreateBackup" -ScriptBlock {pwsh -File $using:BITWARDEN_BACKUP_SCRIPT -PasswordPhrase $using:PasswordPhrase -FinalBackupLocation $using:FinalBackupLocation -All -BackupName $using:BACKUP_FILE_NAME}
 
         }
@@ -446,7 +449,7 @@ PROCESS {
 
         # The job was complete!
         if ($JOB_STATE -eq 'Completed') {
-            Write-Log -EntryType Information -Message "Main: The backup job has completed, let's see if it exists..."
+            Write-Log "Main: The backup job has completed, let's see if it exists..."
 
             # Verify the encrypted backup exists
             if (-not (Test-Path -Path $ENCRYPTED_BACKUP_FILE_NAME)) {
@@ -457,7 +460,7 @@ PROCESS {
                 exit $exitcode_BackupJobCompletedButNoBackup
             }
 
-            Write-Log -EntryType Information -Message "Main: Found the backup!"
+            Write-Log "Main: Found the backup!"
             # Append the job results to our log file and remove the backup
             Receive-job -Name 'CreateBackup' | Out-File -FilePath $LogFile -Append
             Get-Job -Name 'CreateBackup' | Remove-Job
@@ -469,7 +472,7 @@ PROCESS {
 
     #region Replace bitwarden.sh & run.sh with their downloaded variants
     try {
-        Write-Log -EntryType Information -Message "Main: Saving the current run script for just in case purposes and moving the new run script in its place..."
+        Write-Log "Main: Saving the current run script for just in case purposes and moving the new run script in its place..."
         Update-ZHLBWBitWardenScripts -CurrentScript $CURRENT_BITWARDEN_SCRIPT_FILE_PATH -NewScript $TEMP_BITWARDEN_SCRIPT_FILE_PATH -OldScript $OLD_BITWARDEN_SCRIPT_PATH -ErrorAction Stop
     } catch {
         Write-Log -EntryType Warning -Message "Main: Failed replacing the downloaded script with the current BitWarden script due to $_"
@@ -479,7 +482,7 @@ PROCESS {
 
     # We downloaded the script, time to move our current run file to a temporarily location and replace it with the new run script.
     try {
-        Write-Log -EntryType Information -Message "Main: Saving the current run script for just in case purposes and moving the new run script in its place..."
+        Write-Log "Main: Saving the current run script for just in case purposes and moving the new run script in its place..."
         Update-ZHLBWBitWardenScripts -CurrentScript $CURRENT_RUN_FILE_PATH -NewScript $TEMP_BITWARDEN_RUN_FILE_PATH -OldScript $OLD_BITWARDEN_RUN_FILE_PATH
     } catch {
         Write-Log -EntryType Warning -Message "Main: Failed replacing the downloaded run script with the current run script due to $_"
@@ -492,10 +495,10 @@ PROCESS {
     #region Update Bitwarden
 
     # Set the location to BITWARDEN_DIR (Example: /opt/bitwarden/)
-    Write-Log -EntryType Information -Message "Main: Attempting to update BitWarden..."
+    Write-Log "Main: Attempting to update BitWarden..."
     Set-Location -Path $BITWARDEN_DIR
 
-    Write-Log -EntryType Information -Message "Main: Creating background job for ./bitwarden.sh update"
+    Write-Log "Main: Creating background job for ./bitwarden.sh update"
     # Check if Job 'Update' exists. If it does, remove it
     if (Get-Job -Name 'Update' -ErrorAction SilentlyContinue) {
         if ((Get-Job -Name 'Update').State -eq 'Running') {
@@ -535,7 +538,7 @@ PROCESS {
 
     # Update job was completed, did we get an update?
     if ($UPDATE_STATE -eq 'Completed') {
-        Write-Log -EntryType Information -Message "Main: Checking if we actually updated..."
+        Write-Log "Main: Checking if we actually updated..."
 
         # This should return false as if we did update, our BitWarden version should match the new versions
         $DID_WE_UPDATE = Confirm-ZHLBWUpdate -ConfigFile $ConfigFile -DockerFile $DockerFile -NewScript $CURRENT_BITWARDEN_SCRIPT_FILE_PATH
@@ -545,7 +548,7 @@ PROCESS {
             Receive-job -Name 'Update' | Out-File -FilePath $LogFile -Append
             Get-Job -Name 'Update' | Remove-Job
 
-            Write-Log -EntryType Information -Message "Main: Successfully updated!"
+            Write-Log "Main: Successfully updated!"
         }
 
         Write-Log -EntryType Warning -Message "Main: Update failed. Storing results of job in the log file."
@@ -559,7 +562,7 @@ PROCESS {
     #endregion
 
     #region Send Email of Version Changes
-    Write-Log -EntryType Information -Message "Main: Retrieve updated version values for BitWarden..."
+    Write-Log "Main: Retrieve updated version values for BitWarden..."
 
     # Retrieve current version info
     $LATEST_CORE_ID = Get-ZHLBWCoreID -DockerFile $DockerFile
@@ -570,10 +573,10 @@ PROCESS {
         $LATEST_KEYCONNECTOR_ID = Get-ZHLBWKeyConnectorID -DockerFile $DockerFile
     }
 
-    Write-Log -EntryType Information -Message "Main: Latest Core ID: $LATEST_CORE_ID"
-    Write-Log -EntryType Information -Message "Main: Latest Web ID: $LATEST_WEB_ID"
+    Write-Log "Main: Latest Core ID: $LATEST_CORE_ID"
+    Write-Log "Main: Latest Web ID: $LATEST_WEB_ID"
     if ($null -ne $LATEST_KEYCONNECTOR_ID) {
-        Write-Log -EntryType Information -Message "Main: Latest KeyConnector ID: $LATEST_KEYCONNECTOR_ID"
+        Write-Log "Main: Latest KeyConnector ID: $LATEST_KEYCONNECTOR_ID"
     }
 
     # Send email of the update
@@ -590,11 +593,10 @@ PROCESS {
 
     if ($PSBoundParameters.ContainsKey('EmailAddresses') -and $PSBoundParameters.ContainsKey('From') -and $PSBoundParameters.ContainsKey('SMTPServer')) {
         try {
-            Write-Log -EntryType Information -Message "Main: Attempting to send update report email..."
+            Write-Log "Main: Attempting to send update report email..."
             Send-ZHLBWUpdateEmail -EmailAddresses $EmailAddresses -From $From -SmtpServer $SMTPServer -Subject "BitWarden Update Results" -Data $EMAIL_DATA -ErrorAction Stop
         } catch {
             Write-Log -EntryType Warning -Message "Main: Failed sending email report due to $_"
-        } finally {
             Remove-ZHLBWItems -Items $BW_ITEMS
             exit $exitcode_FailSendingUpdateEmail
         }
@@ -602,7 +604,7 @@ PROCESS {
     #endregion
 
     #region Cleanup
-    Write-Log -EntryType Information -Message "Main: Before exiting, let's cleanup our created directory and downloaded files..."
+    Write-Log "Main: Before exiting, let's cleanup our created directory and downloaded files..."
     Remove-ZHLBWItems -Items $BW_ITEMS
     #endregion
 }
