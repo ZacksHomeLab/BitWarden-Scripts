@@ -1057,10 +1057,10 @@ function Remove-ZHLBWItems {
     This function will remove our downloaded/created items.
 .DESCRIPTION
     This function will remove our downloaded/created items.
-.PARAMETER Path
-    The Path to BitWarden's configuration file.
+.PARAMETER Items
+    The array of items to be deleted.
 .EXAMPLE
-    Remove-ZHLBWItems -Path '/opt/bitwarden-temp'
+    Remove-ZHLBWItems -Items '/opt/bitwarden-temp'
     
     The above will compare the current version values with the new version values.
 .INPUTS
@@ -1073,13 +1073,20 @@ function Remove-ZHLBWItems {
         [parameter(Mandatory,
             ValueFromPipelineByPropertyName,
             ValueFromPipeline)]
-            [ValidateScript({Test-Path -Path $_})]
-        [string]$Path
+            [ValidateNotNullOrEmpty()]
+        [System.Object[]]$Items
     )
 
     PROCESS {
-        Write-Verbose "Remove-ZHLBWItems: Removing directory $Path..."
-        Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
+        foreach ($Item in $Items) {
+            if ($Item -isnot [System.IO.DirectoryInfo]) {
+                Write-Verbose "Remove-ZHLBWItems: Attempting to remove Item $Item..."
+                Remove-Item -Path $Item -Force -ErrorAction SilentlyContinue
+            } else {
+                Write-Verbose "Remove-ZHLBWItems: Attempting to remove directory $Item..."
+                Remove-Item -Path $Item -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
 }
 
