@@ -106,7 +106,7 @@ param (
     [parameter(Mandatory=$false,
         Position=4,
         helpMessage="Enter the name of your back, it must end with extension .tar")]
-        [ValidateScript({$_ -match '^.*\.tar$'})]
+        [ValidateScript({$_ -match "^(.*)\.tar$"})]
     [string]$BackupName,
 
     [Parameter(Mandatory=$false,

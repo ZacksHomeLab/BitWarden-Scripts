@@ -40,14 +40,14 @@ param (
         Position=1,
         ValueFromPipelineByPropertyName,
         helpMessage="What's the path of the backup file? (Must end with .gpg or .tar)")]
-        [ValidateScript({Test-path -Path $_ -and ($_ -match '(.*)\.(gpg|tar)$')})]
+        [ValidateScript({Test-path -Path $_ -and ($_ -match "^(.*)\.(gpg|tar)$")})]
     [string]$BackupFile,
 
     [Parameter(Mandatory=$false,
         Position=2,
         ValueFromPipelineByPropertyName
         helpMessage="What's the name and path of the Bitwarden service script? (Must end in .sh)")]
-        [ValidateScript({Test-Path -Path $_ -and $_ -match '(.*)\.sh$'})]
+        [ValidateScript({Test-Path -Path $_ -and $_ -match "^(.*)\.sh$"})]
     [string]$BitWardenScript = '/opt/bitwarden/bitwarden.sh',
 
     [parameter(Mandatory=$false,

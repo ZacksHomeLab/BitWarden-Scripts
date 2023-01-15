@@ -184,7 +184,7 @@ function Backup-ZHLBWBitWarden {
         [parameter(Mandatory,
             Position=1,
             HelpMessage="Enter the name of your backup. It must end with .tar")]
-            [ValidateScript({$_ -match '(.*)\.tar$'})]
+            [ValidateScript({$_ -match "^(.*)\.tar$"})]
         [string]$BackupName
     )
 
@@ -394,7 +394,7 @@ function Unlock-ZHLBWBackup {
             Position=2,
             ValueFromPipelineByPropertyName,
             HelpMessage="Enter the full path and file name for the decrypted backup. Must end with .tar")]
-            [ValidateScript({$_ -match "(.*)\.tar$"})]
+            [ValidateScript({$_ -match "^(.*)\.tar$"})]
         [string]$DecryptLocation
     )
 
@@ -1143,18 +1143,18 @@ function Confirm-ZHLBWUpdate {
         [parameter(Mandatory,
             Position=0,
             ValueFromPipelineByPropertyName)]
-            [ValidateScript({Test-Path -Path $_ -and $_ -match '(.*)\.sh$'})]
+            [ValidateScript({Test-Path -Path $_ -and $_ -match "^(.*)\.sh$"})]
 		[string]$ConfigFile,
 
         [parameter(Mandatory,
             Position=1,
             ValueFromPipelineByPropertyName)]
-            [ValidateScript({Test-Path -Path $_ -and $_ -match '(.*)\.yml$'})]
+            [ValidateScript({Test-Path -Path $_ -and $_ -match "^(.*)\.yml$"})]
         [string]$DockerFile,
 
         [parameter(Mandatory,
             Position=2)]
-            [ValidateScript({Test-Path -Path $_ -and $_ -match '(.*)\.sh$'})]
+            [ValidateScript({Test-Path -Path $_ -and $_ -match "^(.*)\.sh$"})]
         [string]$NewScript
 	)
 	
