@@ -181,17 +181,12 @@ function Backup-ZHLBWBitWarden {
         [ValidateNotNullOrEmpty()]
         [string[]]$Items,
 
-        [parameter(Mandatory=$false,
-            Position=1)]
+        [parameter(Mandatory,
+            Position=1,
+            HelpMessage="Enter the name of your backup. It must end with .tar")]
+            [ValidateScript({$_ -match '(*.)\.tar$'})]
         [string]$BackupName
     )
-
-    begin {
-        # Create name of backup if one wasn't provided
-        if (-not $PSBoundParameters.ContainsKey('BackupName')) {
-            $BackupName = New-ZHLBWBackupName
-        }
-    }
 
     process {
         Write-Verbose "Backup-ZHLBWBitWarden: Creating backup $BackupName..."
@@ -322,7 +317,9 @@ function Lock-ZHLBWBackup {
 
     begin {
         # Encrypted Backup File Location
-        $ENCRYPTED_BACKUP_NAME = "$($BackupFile).gpg"
+        if ($BackupFile -notlike '*.gpg') {
+            $ENCRYPTED_BACKUP_NAME = "$($BackupFile).gpg"
+        }
     }
 
     process {

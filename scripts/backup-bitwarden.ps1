@@ -104,7 +104,8 @@ param (
     [int]$Days = 31,
 
     [parameter(Mandatory=$false,
-        Position=4)]
+        Position=4,
+        helpMessage="Enter the name of your back, it must end with extension .tar")]
         [ValidateScript({$_ -match '^.*\.tar$'})]
     [string]$BackupName,
 
@@ -131,7 +132,11 @@ BEGIN {
     #region VARIABLES
     $script:LOG_FILE = $LogFile
 
+
     $FINAL_BACKUP_LOCATION = $FinalBackupLocation
+    if ($FINAL_BACKUP_LOCATION[-1] -eq '/') {
+        $FINAL_BACKUP_LOCATION = $FINAL_BACKUP_LOCATION.Substring(0,$FINAL_BACKUP_LOCATION.Length-1)
+    }
 
     # The incremental directories to be backed up
     $INCREMENTAL_DIRECTORIES = "/opt/bitwarden/bwdata/env", "/opt/bitwarden/bwdata/core/attachments", "/opt/bitwarden/bwdata/mssql/data"
@@ -144,14 +149,16 @@ BEGIN {
 
     # Generate a backup name if one wasn't provided
     if (-not $PSBoundParameters.ContainsKey('BackupName')) {
-        $BackupName = New-ZHLBWBackupName
+        $BACKUP_NAME = New-ZHLBWBackupName -Directory $FINAL_BACKUP_LOCATION
+    } else {
+        $BACKUP_NAME = $BackupName
     }
 
     # The file path of the Encrypted Backup
-    $ENCRYPTED_BACKUP_NAME = "$FINAL_BACKUP_LOCATION/$BackupName"
+    $ENCRYPTED_BACKUP_NAME = "$BACKUP_NAME.gpg"
 
     # Add the items or directories to be removed by the script if we encounter an error or end said script
-    $CLEANUP_ITEMS = @($BackupName)
+    $CLEANUP_ITEMS = @($ENCRYPTED_BACKUP_NAME, $BACKUP_NAME)
 
     # Send Emails if this is true
     if ($PSBoundParameters.ContainsKey('EmailAddresses') -and $PSBoundParameters.ContainsKey('From') -and $PSBoundParameters.ContainsKey('SMTPServer')) {
@@ -242,11 +249,11 @@ PROCESS {
             }
 
             Write-Log "Main: Vault has changed within the hour, creating incremental Backup..."
-            Backup-ZHLBWBitWarden -Items $INCREMENTAL_DIRECTORIES -BackupName $BackupName -ErrorAction Stop
+            Backup-ZHLBWBitWarden -Items $INCREMENTAL_DIRECTORIES -BackupName $BACKUP_NAME -ErrorAction Stop
         } elseif ($PSCmdlet.ParameterSetName -like 'All*') {
             # Create a full backup
             Write-Log "`nMain: Creating full Backup..."
-            Backup-ZHLBWBitWarden -Items $ALL_DIRECTORIES -BackupName $BackupName -ErrorAction Stop
+            Backup-ZHLBWBitWarden -Items $ALL_DIRECTORIES -BackupName $BACKUP_NAME -ErrorAction Stop
         }
         
     } catch {
@@ -254,23 +261,23 @@ PROCESS {
         exit $exitcode_FailCreatingBackup
     }
     
-    Write-Log "Main: Successfully created backup $BackupName!"
+    Write-Log "Main: Successfully created backup $BACKUP_NAME!"
     #endregion
 
 
 
     #region Encrypt Backup
     try {
-        Write-Log "`nMain: Attempting to encrypt Backup $BackupName."
+        Write-Log "`nMain: Attempting to encrypt Backup $BACKUP_NAME."
         if ($PSCmdlet.ParameterSetName -like '*PasswordFile*') {
-            Lock-ZHLBWBackup -BackupFileLocation $BackupName -PasswordFileLocation $PasswordFile -ErrorAction Stop
+            Lock-ZHLBWBackup -BackupFileLocation $BACKUP_NAME -PasswordFileLocation $PasswordFile -ErrorAction Stop
         } elseif ($PSCmdlet.ParameterSetName -like '*PasswordPhrase*') {
-            Lock-ZHLBWBackup -BackupFileLocation $BackupName -PasswordPhrase $PasswordPhrase -ErrorAction Stop
+            Lock-ZHLBWBackup -BackupFileLocation $BACKUP_NAME -PasswordPhrase $PasswordPhrase -ErrorAction Stop
         }
         
     } catch {
         $Message = $_
-        Write-Log -EntryType Warning -Message "Main: Failed to encrypt backup $BackupName because of error $Message"
+        Write-Log -EntryType Warning -Message "Main: Failed to encrypt backup $BACKUP_NAME because of error $Message"
         if ($CAN_SEND_EMAIL) {
             Send-ZHLBWEmail -EmailAddresses $EmailAddresses -From $From -SmtpServer $SMTPServer -Subject "FAILURE: BitWarden Backup" -Body "Encryption was successful but failed to delete unencrypted backup because of error: $Message" -ErrorAction SilentlyContinue
         }
@@ -280,7 +287,7 @@ PROCESS {
 
     # Encryption was successful, delete unencrypted backup
     Write-Log "`nMain: Encryption was successful, removing unencrypted backup."
-    Remove-Item -Path $BackupName -Force
+    Remove-Item -Path $BACKUP_NAME -Force
     #endregion
 
 

@@ -65,13 +65,13 @@ param (
     [parameter(Mandatory=$false,
         Position=2,
         ValueFromPipelineByPropertyName)]
-        [ValidateScript({Test-Path -Path $_})]
+        [ValidateScript({Test-path -Path $_ -and $_ -match '(.*)\.yml$'})]
     [string]$ConfigFile = '/opt/bitwarden/bwdata/config.yml',
 
     [parameter(Mandatory=$false,
         Position=3,
         ValueFromPipelineByPropertyName)]
-    [ValidateScript({Test-Path -Path $_})]
+        [ValidateScript({Test-path -Path $_ -and $_ -match '(.*)\.yml$'})]
     [string]$DockerFile = '/opt/bitwarden/bwdata/docker/docker-compose.yml',
 
     [parameter(Mandatory=$false,
@@ -81,7 +81,7 @@ param (
 	
 	[parameter(Mandatory=$false,
         Position=5)]
-        [ValidateScript({Test-Path -Path $_})]
+        [ValidateScript({Test-path -Path $_ -and $_ -match '(.*)\.ps1$'})]
 	[string]$BackupScriptLocation = '/opt/bitwarden/backup-bitwarden.ps1',
 
     [Parameter(Mandatory=$false,
@@ -115,6 +115,14 @@ BEGIN {
 
     # Example BitWarden Directory: '/opt/bitwarden'
     $BITWARDEN_DIR = $BitWardenDir
+    if ($BITWARDEN_DIR[-1] -eq '/') {
+        $BITWARDEN_DIR = $BITWARDEN_DIR.Substring(0,$BITWARDEN_DIR.Length-1)
+    }
+
+    $FINAL_BACKUP_LOCATION = $FinalBackupLocation
+    if ($FINAL_BACKUP_LOCATION[-1] -eq '/') {
+        $FINAL_BACKUP_LOCATION = $FINAL_BACKUP_LOCATION.Substring(0,$FINAL_BACKUP_LOCATION.Length-1)
+    }
 
     # Store the location of our powershell script we use to create a BitWarden backup
     $BITWARDEN_BACKUP_SCRIPT = $BackupScriptLocation
@@ -316,9 +324,9 @@ PROCESS {
     #region Generate File Names
 
     # Generate a new Backup File Name
-    $BACKUP_FILE_NAME = New-ZHLBWBackupName
+    $BACKUP_FILE_NAME = New-ZHLBWBackupName -Directory $FINAL_BACKUP_LOCATION
     # Generate an Encrypted Backup File Name
-    $ENCRYPTED_BACKUP_FILE_NAME = "$FinalBackupLocation/$BACKUP_FILE_NAME.gpg"
+    $ENCRYPTED_BACKUP_FILE_NAME = "$BACKUP_FILE_NAME.gpg"
     #endregion
 
 
@@ -416,9 +424,9 @@ PROCESS {
 
         # Start the Backup
         if ($PSCmdlet.ParameterSetName -eq 'PasswordFile') {
-            Start-Job -Name "CreateBackup" -ScriptBlock {pwsh -File $using:BITWARDEN_BACKUP_SCRIPT -PasswordFile $using:PasswordFile -FinalBackupLocation $using:FinalBackupLocation -All -BackupName $using:BACKUP_FILE_NAME}
+            Start-Job -Name "CreateBackup" -ScriptBlock {pwsh -File $using:BITWARDEN_BACKUP_SCRIPT -PasswordFile $using:PasswordFile -FinalBackupLocation $using:FINAL_BACKUP_LOCATION -All -BackupName $using:BACKUP_FILE_NAME}
         } elseif ($PSCmdlet.ParameterSetName -eq 'PasswordPhrase') {
-            Start-Job -Name "CreateBackup" -ScriptBlock {pwsh -File $using:BITWARDEN_BACKUP_SCRIPT -PasswordPhrase $using:PasswordPhrase -FinalBackupLocation $using:FinalBackupLocation -All -BackupName $using:BACKUP_FILE_NAME}
+            Start-Job -Name "CreateBackup" -ScriptBlock {pwsh -File $using:BITWARDEN_BACKUP_SCRIPT -PasswordPhrase $using:PasswordPhrase -FinalBackupLocation $using:FINAL_BACKUP_LOCATION -All -BackupName $using:BACKUP_FILE_NAME}
 
         }
         # Get the current state of the job
