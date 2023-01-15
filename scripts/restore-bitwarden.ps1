@@ -40,12 +40,12 @@ param (
         Position=1,
         ValueFromPipelineByPropertyName,
         helpMessage="What's the path of the backup file? (Must end with .gpg or .tar)")]
-        [ValidateScript({Test-path -Path $_ -and ($_ -match "^(.*)\.(gpg|tar)$")})]
+        [ValidateScript({(Test-path -Path $_) -and ($_ -match "^(.*)\.(gpg|tar)$")})]
     [string]$BackupFile,
 
     [Parameter(Mandatory=$false,
         Position=2,
-        ValueFromPipelineByPropertyName
+        ValueFromPipelineByPropertyName,
         helpMessage="What's the name and path of the Bitwarden service script? (Must end in .sh)")]
         [ValidateScript({Test-Path -Path $_ -and $_ -match "^(.*)\.sh$"})]
     [string]$BitWardenScript = '/opt/bitwarden/bitwarden.sh',
@@ -87,14 +87,6 @@ begin {
 
     # Only used to save the backup run script in case stuff breaks
     $TEMP_BITWARDEN_RUN_FILE_PATH = "/tmp/run.sh"
-    # Decrypt Backup File Name + Path
-    $DECRYPT_LOCATION = New-ZHLBWBackupDecryptionName -Directory '/tmp'
-
-    # Extract Backup File Name + Path
-    $EXTRACT_LOCATION = New-ZHLBWBackupExtractionName -Directory '/tmp'
-
-    # The items in this array will be removed upon error or upon success of the script.
-    $CLEANUP_ITEMS = @($DECRYPT_LOCATION, $EXTRACT_LOCATION, $TEMP_BITWARDEN_RUN_FILE_PATH)
     #endregion
 
     #region FUNCTIONS
@@ -169,13 +161,19 @@ begin {
     # Verify if we can import the ZHLBitWarden Module:
     if (-not (Get-Module -Name ZHLBitWarden -ErrorAction SilentlyContinue)) {
         try {
-            Import-Module -Name ZHLBitWarden -ErrorAction Stop
+            if (Test-Path -Path "$($Home)/.local/share/powershell/Modules/ZHLBitWarden.psm1") {
+                Import-Module -Name "$($Home)/.local/share/powershell/Modules/ZHLBitWarden.psm1"
+            } elseif (Test-Path -Path "/usr/local/share/powershell/Modules/ZHLBitWarden.psm1") {
+                Import-Module -Name "/usr/local/share/powershell/Modules/ZHLBitWarden.psm1" -ErrorAction Stop
+            }
+            
         } catch {
             Write-Log -EntryType Warning -Message "Main: Error importing PowerShell Module ZHLBitWarden."
-            Write-Log -EntryType Warning -Message "Main: Verify the module exists in '/usr/local/share/powershell/Modules'"
+            Write-Log -EntryType Warning -Message "Main: Verify the module exists in '$($Home)/.local/share/powershell/Modules/ OR /usr/local/share/powershell/Modules/'"
             exit $exitcode_MissingZHLBitWardenModule
         }
     }
+    
     # Verify the BitWarden script exists
     if (-not (Test-Path -Path $BITWARDEN_SCRIPT_FILE_PATH)) {
         Write-Log -EntryType Warning -Message "Main: Missing $BITWARDEN_SCRIPT_FILE_PATH"
@@ -188,6 +186,14 @@ begin {
         exit $exitcode_MissingBitWardenRunScript
     }
 
+    # Decrypt Backup File Name + Path
+    $DECRYPT_LOCATION = New-ZHLBWBackupDecryptionName -Directory '/tmp'
+
+    # Extract Backup File Name + Path
+    $EXTRACT_LOCATION = New-ZHLBWBackupExtractionName -Directory '/tmp'
+
+    # The items in this array will be removed upon error or upon success of the script.
+    $CLEANUP_ITEMS = @($DECRYPT_LOCATION, $EXTRACT_LOCATION, $TEMP_BITWARDEN_RUN_FILE_PATH)
     #endregion
 }
 
@@ -232,9 +238,9 @@ process {
     try {
         # Attempting to stop Bitwarden before restoring backup
         Write-Log "Main: Attempting to stop BitWarden before we proceed with the restoration process..."
-        Stop-Bitwarden -ScriptLocation $BITWARDEN_SCRIPT_FILE_PATH -ErrorAction Stop
+        Stop-ZHLBWBitwarden -ScriptLocation $BITWARDEN_SCRIPT_FILE_PATH -ErrorAction Stop
     } catch {
-        Write-Log -EntryType Warning -Message "Main: Failure stopping BitWarden, stopping script."
+        Write-Log -EntryType Warning -Message "Main: Failure stopping BitWarden due to $_"
         Remove-ZHLBWItems -Items $CLEANUP_ITEMS
         exit $exitcode_FailStoppingBitWarden
     }
@@ -251,9 +257,9 @@ process {
     # Restore BitWarden Backup
     try {
         Write-Log "Main: Attempting to restore BitWarden..."
-        Restore-Backup -ExtractedItems $EXTRACTED_ITEMS -ExtractLocation $EXTRACT_LOCATION
+        Restore-ZHLBWBackup -ExtractedItems $EXTRACTED_ITEMS -ExtractLocation $EXTRACT_LOCATION
     } catch {
-        Write-Log -EntryType Warning -Message "Main: Failure stopping BitWarden, stopping script."
+        Write-Log -EntryType Warning -Message "Main: Failure restoring BitWarden, due to $_"
         Remove-ZHLBWItems -Items $CLEANUP_ITEMS
         exit $exitcode_FailRestoringBitWardenBackup
     }
@@ -262,9 +268,9 @@ process {
     try {
         # Attempting to stop Bitwarden before restoring backup
         Write-Log "Main: Attempting to start BitWarden before..."
-        Start-Bitwarden -ScriptLocation $BITWARDEN_SCRIPT_FILE_PATH -ErrorAction Stop
+        Start-ZHLBWBitwarden -ScriptLocation $BITWARDEN_SCRIPT_FILE_PATH -ErrorAction Stop
     } catch {
-        Write-Log -EntryType Warning -Message "Main: Failure starting BitWarden, stopping script."
+        Write-Log -EntryType Warning -Message "Main: Failure starting BitWarden, due to $_"
         Remove-ZHLBWItems -Items $CLEANUP_ITEMS
         exit $exitcode_FailStartingBitWarden
     }

@@ -199,6 +199,7 @@ BEGIN {
 
     #region Exit Codes
     $exitcode_NoChangesInPastHour = 0
+    $exitcodde_NotRoot = 9
     $exitcode_MissingZHLBitWardenModule = 10
     $exitcode_FailCreatingBackup = 11
     $exitcode_FailEncryptingBackup = 12
@@ -211,6 +212,13 @@ BEGIN {
 PROCESS {
 
     #region Prereqs
+    # Check if the user is root
+    if ($PSVersionTable.Platform -eq "Unix") {
+        if ($(whoami) -ne "root") {
+            Write-Log -EntryType Warning -Message "Main: You must run this script as root, stopping."
+            exit $exitcode_NotRoot
+        }
+    }
 
     # Verify if we can import the ZHLBitWarden Module:
     if (-not (Get-Module -Name ZHLBitWarden -ErrorAction SilentlyContinue)) {
@@ -232,6 +240,7 @@ PROCESS {
     if (-not $PSBoundParameters.ContainsKey('BackupName')) {
         $BACKUP_NAME = New-ZHLBWBackupName -Directory $FINAL_BACKUP_LOCATION
     } else {
+        #TODO: Figure out a way to check if the finaly backup location is within the backup name
         $BACKUP_NAME = $BackupName
     }
 
@@ -275,9 +284,9 @@ PROCESS {
     try {
         Write-Log "`nMain: Attempting to encrypt Backup $BACKUP_NAME."
         if ($PSCmdlet.ParameterSetName -like '*PasswordFile*') {
-            Lock-ZHLBWBackup -BackupFileLocation $BACKUP_NAME -PasswordFileLocation $PasswordFile -ErrorAction Stop
+            Lock-ZHLBWBackup -BackupFile $BACKUP_NAME -PasswordFile $PasswordFile -ErrorAction Stop
         } elseif ($PSCmdlet.ParameterSetName -like '*PasswordPhrase*') {
-            Lock-ZHLBWBackup -BackupFileLocation $BACKUP_NAME -PasswordPhrase $PasswordPhrase -ErrorAction Stop
+            Lock-ZHLBWBackup -BackupFile $BACKUP_NAME -PasswordPhrase $PasswordPhrase -ErrorAction Stop
         }
         
     } catch {

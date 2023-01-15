@@ -93,10 +93,10 @@ function New-ZHLBWBackupDecryptionName {
                 $Directory = $Directory.Substring(0,$Directory.Length-1)
             }
             # Example name: /tmp/Extract-BitWardenBackup-2023-01-13_20-55-23
-            $FULL_FILE_NAME = $Directory + "/" + "Decrypt-BitWardenBackup-$((Get-Date).toString('yyyy-MM-dd_HH-mm-ss'))"
+            $FULL_FILE_NAME = $Directory + "/" + "Decrypt-BitWardenBackup-$((Get-Date).toString('yyyy-MM-dd_HH-mm-ss')).tar"
         } else {
             # Directory wasn't given
-            $FULL_FILE_NAME = "Decrypt-BitWardenBackup-$((Get-Date).toString('yyyy-MM-dd_HH-mm-ss'))"
+            $FULL_FILE_NAME = "Decrypt-BitWardenBackup-$((Get-Date).toString('yyyy-MM-dd_HH-mm-ss')).tar"
         }
     }
 
@@ -319,15 +319,17 @@ function Lock-ZHLBWBackup {
         # Encrypted Backup File Location
         if ($BackupFile -notlike '*.gpg') {
             $ENCRYPTED_BACKUP_NAME = "$($BackupFile).gpg"
+        } else {
+            $ENCRYPTED_BACKUP_NAME = $BackupFile
         }
     }
 
     process {
         # Encrypt the backup with a Password File or Password Phrase
-        if ($PSBoundParameters.ParameterSetName -eq 'PasswordFile') {
+        if ($PSCmdlet.ParameterSetName -eq 'PasswordFile') {
             Write-Verbose "Lock-ZHLBWBackup: Attempting to encrypt backup $BackupFile with Password File $PasswordFile..."
             Get-Content -Path $PasswordFile | gpg --batch -c --passphrase-fd 0 $BackupFile
-        } elseif ($PSBoundParameters.ParameterSetName -eq 'PasswordPhrase') {
+        } elseif ($PSCmdlet.ParameterSetName -eq 'PasswordPhrase') {
             Write-Verbose "Lock-ZHLBWBackup: Attempting to encrypt backup $BackupFile with a provided Password phrase..."
             ConvertFrom-SecureString -SecureString $PasswordPhrase -AsPlainText | gpg --batch -c --passphrase-fd 0 $BackupFile
         }
@@ -489,7 +491,7 @@ function Expand-ZHLBWBackup {
             [ValidateScript({Test-Path -Path $_})]
         [string]$ArchiveFile,
 
-        [parameter(Mandatory=$false,
+        [parameter(Mandatory,
             Position=1,
             ValueFromPipelineByPropertyName)]
         [string]$ExtractLocation
@@ -498,15 +500,11 @@ function Expand-ZHLBWBackup {
     begin {
 
         # If an Extract location wasn't given, create one
-        if (-not $PSBoundParameters.containskey('ExtractLocation')) {
-            $EXTRACT_DIRECTORY = New-ZHLBWBackupExtractionName
-        } else {
-            # As this has to be a directory, we'll need to check for trailing '/'.
-            if ($ExtractLocation[-1] -eq '/' -or $ExtractLocation[-1] -eq '\') {
-                $ExtractLocation = $ExtractLocation.Substring(0,$ExtractLocation.Length-1)
-            }
-            $EXTRACT_DIRECTORY = $ExtractLocation
+        # As this has to be a directory, we'll need to check for trailing '/'.
+        if ($ExtractLocation[-1] -eq '/' -or $ExtractLocation[-1] -eq '\') {
+            $ExtractLocation = $ExtractLocation.Substring(0,$ExtractLocation.Length-1)
         }
+        $EXTRACT_DIRECTORY = $ExtractLocation
     }
 
     process {
@@ -945,7 +943,7 @@ function Get-ZHLBWWebID {
     PROCESS {
         # Retrieve WEB_ID
         Write-Verbose "Get-ZHLBWWebID: Attempting to retrieve Web ID from Docker file $DockerFile..."
-        $WEB_ID = docker-compose --file $DockerFile ps -q web
+        $WEB_ID = docker compose --file $DockerFile ps -q web
         $WEB_ID = docker inspect --format='{{.Config.Image}}:' $WEB_ID
     }
     END {
@@ -983,7 +981,7 @@ function Get-ZHLBWCoreID {
 
     PROCESS {
         Write-Verbose "Get-ZHLBWCoreID: Attempting to retrieve Core ID from Docker file $DockerFile..."
-        $CORE_ID = docker-compose --file $DockerFile ps -q admin
+        $CORE_ID = docker compose --file $DockerFile ps -q admin
         $CORE_ID = docker inspect --format='{{.Config.Image}}:' $CORE_ID
     }
     end {
@@ -1049,7 +1047,7 @@ function Get-ZHLBWKeyConnectorID {
 
     PROCESS {
         Write-Verbose "Get-ZHLBWKeyConnectorID: Attempting to retrieve Key Connector ID from Docker file $DockerFile..."
-        $KEY_CONNECTOR_ID = docker-compose --file $DockerFile ps -q key-connector
+        $KEY_CONNECTOR_ID = docker compose --file $DockerFile ps -q key-connector
         $KEY_CONNECTOR_ID = docker inspect --format='{{.Config.Image}}:' $KEY_CONNECTOR_ID
     }
     END {
@@ -1143,52 +1141,51 @@ function Confirm-ZHLBWUpdate {
         [parameter(Mandatory,
             Position=0,
             ValueFromPipelineByPropertyName)]
-            [ValidateScript({Test-Path -Path $_ -and $_ -match "^(.*)\.sh$"})]
+            [ValidateScript({(Test-Path -Path $_) -and ($_ -match "^(.*)\.yml$")})]
 		[string]$ConfigFile,
 
         [parameter(Mandatory,
             Position=1,
             ValueFromPipelineByPropertyName)]
-            [ValidateScript({Test-Path -Path $_ -and $_ -match "^(.*)\.yml$"})]
+            [ValidateScript({(Test-Path -Path $_) -and ($_ -match "^(.*)\.yml$")})]
         [string]$DockerFile,
 
         [parameter(Mandatory,
             Position=2)]
-            [ValidateScript({Test-Path -Path $_ -and $_ -match "^(.*)\.sh$"})]
+            [ValidateScript({(Test-Path -Path $_) -and ($_ -match "^(.*)\.sh$")})]
         [string]$NewScript
 	)
 	
 	BEGIN {
-		
+
         # Retrieve current version values
-        $CURRENT_WEB_ID = Get-ZHLBWWebID -DockerFile $DockerFile
-        $CURRENT_CORE_ID = Get-ZHLBWCoreID -DockerFile $DockerFile
+        $CURRENT_WEB_ID = (Get-ZHLBWWebID -DockerFile $DockerFile).split(':')[-2]
+        $CURRENT_CORE_ID = (Get-ZHLBWCoreID -DockerFile $DockerFile).split(':')[-2]
+
         # Retrieve the key connector value, should return true or false
 		$KEY_CONNECTOR_ENABLED = Get-ZHLBWKeyConnectorStatus -ConfigFile $ConfigFile
         if ($KEY_CONNECTOR_ENABLED -eq 'true') {
-            $CURRENT_KEYCONNECTOR_ID = Get-ZHLBWKeyConnectorID -DockerFile $DockerFile
+            $CURRENT_KEYCONNECTOR_ID = (Get-ZHLBWKeyConnectorID -DockerFile $DockerFile).split(':')[-2]
         }
 
         # Retrieve the new values from the provided script
-        $NEW_CORE_VERSION = (Select-String -Path $NewScript -Pattern "COREVERSION=").tostring().split('=')[-1].replace('"','')
-        $NEW_WEB_VERSION = (Select-String -Path $NewScript -Pattern "WEBVERSION=").tostring().split('=')[-1].replace('"','')
-        $NEW_KEY_CONNECTOR_VERSION = (Select-String -Path $NewScript -Pattern "KEYCONNECTORVERSION=").tostring().split('=')[-1].replace('"','')
-
+        $NEW_CORE_ID = (Select-String -Path $NewScript -Pattern "COREVERSION=").tostring().split('=')[-1].replace('"','')
+        $NEW_WEB_ID = (Select-String -Path $NewScript -Pattern "WEBVERSION=").tostring().split('=')[-1].replace('"','')
+        if ($KEY_CONNECTOR_ENABLED -eq 'true') {
+            $NEW_KEY_CONNECTOR_ID = (Select-String -Path $NewScript -Pattern "KEYCONNECTORVERSION=").tostring().split('=')[-1].replace('"','')
+        }
         $UpdateNeeded = $true
 	}
 	
 	PROCESS {
 
         # Verify the current versions with the new versions
-        if ($null -ne $CURRENT_KEYCONNECTOR_ID -and 
-                $CURRENT_CORE_ID -match $NEW_CORE_VERSION -and 
-                $CURRENT_WEB_ID -match $NEW_WEB_VERSION -and 
-                $CURRENT_KEYCONNECTOR_ID -match $NEW_KEY_CONNECTOR_VERSION) {
+        # TODO: Using Compare-Object would wook nicer
+        if ($null -ne $CURRENT_KEYCONNECTOR_ID -and $CURRENT_CORE_ID -match $NEW_CORE_ID -and $CURRENT_WEB_ID -match $NEW_WEB_ID -and $CURRENT_KEYCONNECTOR_ID -match $NEW_KEY_CONNECTOR_ID) {
             Write-Verbose "Confirm-ZHLBWUpdate: We're fully updated."
             $UpdateNeeded = $false
 
-        } elseif ($CURRENT_CORE_ID -match $NEW_CORE_VERSION -and 
-                $CURRENT_WEB_ID -match $NEW_WEB_VERSION) {
+        } elseif ($CURRENT_CORE_ID -match $NEW_CORE_ID -and $CURRENT_WEB_ID -match $NEW_WEB_ID) {
             
             Write-Verbose "Confirm-ZHLBWUpdate: We're fully updated."
             $UpdateNeeded = $false
@@ -1230,13 +1227,8 @@ function Remove-ZHLBWItems {
 
     PROCESS {
         foreach ($Item in $Items) {
-            if ($Item -isnot [System.IO.DirectoryInfo]) {
-                Write-Verbose "Remove-ZHLBWItems: Attempting to remove Item $Item..."
-                Remove-Item -Path $Item -Force -ErrorAction SilentlyContinue
-            } else {
-                Write-Verbose "Remove-ZHLBWItems: Attempting to remove directory $Item..."
-                Remove-Item -Path $Item -Recurse -Force -ErrorAction SilentlyContinue
-            }
+            Write-Verbose "Remove-ZHLBWItems: Attempting to remove Item $Item..."
+            Remove-Item -Path $Item -Force -Recurse -ErrorAction SilentlyContinue
         }
     }
 }
@@ -1484,4 +1476,4 @@ function Send-ZHLBWUpdateEmail {
 Export-ModuleMember -Function New-ZHLBWBackupName, New-ZHLBWBackupDecryptionName, New-ZHLBWBackupExtractionName, Backup-ZHLBWBitWarden, Remove-ZHLBWBackups, `
 Lock-ZHLBWBackup, Unlock-ZHLBWBackup, Expand-ZHLBWBackup, Restore-ZHLBWBackup, Stop-ZHLBWBitwarden, Start-ZHLBWBitwarden, Restart-ZHLBWBitWarden, Update-ZHLBWBitWardenScripts, `
 Install-ZHLBWBitWardenScripts, Update-ZHLBWScriptPermissions, Get-ZHLBWWebID, Get-ZHLBWCoreID, Get-ZHLBWKeyConnectorStatus, Get-ZHLBWKeyConnectorID, Get-ZHLBWRunScriptURL, `
-Get-ZHLBWScriptURL, Confirm-ZHLBWUpdate, Remove-ZHLBWItems, Send-ZHLBWEmail, Send-ZHLBWUpdateEmail
+Get-ZHLBWScriptURL, Confirm-ZHLBWUpdate, Remove-ZHLBWItems, Send-ZHLBWEmail, Send-ZHLBWUpdateEmail, Get-ZHLBWExtractedItems

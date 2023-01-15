@@ -169,26 +169,26 @@ BEGIN {
 
     #region ExitCodes
     $exitcode_NoUPDATE_NEEDED = 0
-    $exitcode_NotRoot = 7
-    $exitcode_MissingZHLBitWardenModule = 8
-    $exitcode_NoScriptURL = 9
-    $exitcode_FailCreatingTempDirectory = 10
-    $exitcode_MissingDockerCommand = 11
-    $exitcode_MissingDockerComposeCommand = 12
-    $exitcode_MissingScriptsDirectory = 14
-    $exitcode_FailDownloadingSCript = 15
-    $exitcode_FailReplacingScript = 16
-    $exitcode_FailUpdatingPermissions = 17
-    $exitcode_FailDownloadingRunScript = 18
-    $exitcode_FailReplacingRunScript = 19
-    $exitcode_FailUpdatingPermissionsOnRunFile = 20
-    $exitcode_MissingPWSHCommand = 21
-    $exitcode_TooLongForBackup = 22
-    $exitcode_BackupJobCompletedButNoBackup = 23
-    $exitcode_TooLongForUpdate = 24
-    $exitcode_MissingBitWardenBackupScript = 25
-    $exitcode_UpdateFailed = 26
-    $exitcode_FailSendingUpdateEmail = 27
+    $exitcode_NotRoot = 10
+    $exitcode_MissingZHLBitWardenModule = 11
+    $exitcode_NoScriptURL = 12
+    $exitcode_FailCreatingTempDirectory = 13
+    $exitcode_MissingDockerCommand = 14
+    $exitcode_MissingScriptsDirectory = 15
+    $exitcode_FailDownloadingSCript = 16
+    $exitcode_FailReplacingScript = 17
+    $exitcode_FailUpdatingPermissions = 18
+    $exitcode_FailDownloadingRunScript = 19
+    $exitcode_FailReplacingRunScript = 20
+    $exitcode_FailUpdatingPermissionsOnRunFile = 21
+    $exitcode_MissingPWSHCommand = 22
+    $exitcode_TooLongForBackup = 23
+    $exitcode_BackupJobCompletedButNoBackup = 24
+    $exitcode_TooLongForUpdate = 25
+    $exitcode_MissingBitWardenBackupScript = 26
+    $exitcode_UpdateFailed = 27
+    $exitcode_FailSendingUpdateEmail = 28
+    $exitcode_CouldNotConfirmUpdate = 29
     #endregion
 
     #region functions
@@ -248,10 +248,15 @@ PROCESS {
     # Verify if we can import the ZHLBitWarden Module:
     if (-not (Get-Module -Name ZHLBitWarden -ErrorAction SilentlyContinue)) {
         try {
-            Import-Module -Name ZHLBitWarden -ErrorAction Stop
+            if (Test-Path -Path "$($Home)/.local/share/powershell/Modules/ZHLBitWarden.psm1") {
+                Import-Module -Name "$($Home)/.local/share/powershell/Modules/ZHLBitWarden.psm1"
+            } elseif (Test-Path -Path "/usr/local/share/powershell/Modules/ZHLBitWarden.psm1") {
+                Import-Module -Name "/usr/local/share/powershell/Modules/ZHLBitWarden.psm1" -ErrorAction Stop
+            }
+            
         } catch {
             Write-Log -EntryType Warning -Message "Main: Error importing PowerShell Module ZHLBitWarden."
-            Write-Log -EntryType Warning -Message "Main: Verify the module exists in '/usr/local/share/powershell/Modules'"
+            Write-Log -EntryType Warning -Message "Main: Verify the module exists in '$($Home)/.local/share/powershell/Modules/ OR /usr/local/share/powershell/Modules/'"
             exit $exitcode_MissingZHLBitWardenModule
         }
     }
@@ -259,12 +264,6 @@ PROCESS {
     if (-not (Get-Command 'docker' -ErrorAction SilentlyContinue)) {
         Write-Log -EntryType Error -Message "Main: Missing command Docker, is it installed?"
         exit $exitcode_MissingDockerCommand
-    }
-
-    # Verify Docker Compose is installed
-    if (-not (Get-Command 'docker-compose' -ErrorAction SilentlyContinue)) {
-        Write-Log -EntryType Error -Message "Main: Missing command Docker-compose, is it installed?"
-        exit $exitcode_MissingDockerComposeCommand
     }
 
     # Verify if PWSH is installed
@@ -302,7 +301,7 @@ PROCESS {
     #region Retrieve URLs for BitWarden's Script File & Run File
     # Retrieve BitWarden Script URL
     Write-Log -EntryType Verbose -Message "Main: Attempting to retrieve BitWarden Script URL..."
-    $BITWARDEN_SCRIPT_URL = Get-ZHLBWScriptURL -ConfigFile $CURRENT_BITWARDEN_SCRIPT_FILE_PATH
+    $BITWARDEN_SCRIPT_URL = Get-ZHLBWScriptURL -CurrentScript $CURRENT_BITWARDEN_SCRIPT_FILE_PATH
 
     # Validate the URL's existence
     if ($null -eq $BITWARDEN_SCRIPT_URL) {
@@ -312,7 +311,7 @@ PROCESS {
 
     # Retrieve the RUN Script URL from the script file
     Write-Log -EntryType Verbose -Message "Main: Attempting to retrieve BitWarden Run Script URL..."
-    $BITWARDEN_RUN_SCRIPT_URL = Get-ZHLBWRunScriptURL -CurrentScript $CURRENT_BITWARDEN_SCRIPT_FILE_PATH
+    $BITWARDEN_RUN_SCRIPT_URL = Get-ZHLBWRunScriptURL -CurrentRunScript $CURRENT_BITWARDEN_SCRIPT_FILE_PATH
 
     if ($null -eq $BITWARDEN_RUN_SCRIPT_URL) {
         Write-Log -EntryType Warning -Message "Main: Failed retrieving BitWarden Run Script URL from config file $CURRENT_BITWARDEN_SCRIPT_FILE_PATH."
@@ -331,12 +330,12 @@ PROCESS {
 
 
     #region Retrieve current versions of BitWarden
-    $CURRENT_CORE_ID = Get-ZHLBWCoreID -DockerFile $DockerFile
-    $CURRENT_WEB_ID = Get-ZHLBWWebID -DockerFile $DockerFile
+    $CURRENT_CORE_ID = (Get-ZHLBWCoreID -DockerFile $DockerFile).split(':')[-2]
+    $CURRENT_WEB_ID = (Get-ZHLBWWebID -DockerFile $DockerFile).split(':')[-2]
     $KEY_CONNECTOR_ENABLED = Get-ZHLBWKeyConnectorStatus -ConfigFile $ConfigFile
 
-    if ($KEY_CONNECTOR_ENABLED) {
-        $CURRENT_KEYCONNECTOR_ID = Get-KeyConnectorID -DockerFile $DockerFile
+    if ($KEY_CONNECTOR_ENABLED -eq 'true') {
+        $CURRENT_KEYCONNECTOR_ID = (Get-ZHLBWKeyConnectorID -DockerFile $DockerFile).split(':')[-2]
     }
 
     Write-Log "Main: Current Core ID: $CURRENT_CORE_ID"
@@ -398,7 +397,13 @@ PROCESS {
     #region Can we update BitWarden?
     Write-Log "Main: Checking if we can update..."
     # This will return true if we can update
-    $UPDATE_NEEDED = Confirm-ZHLBWUpdate -ConfigFile $ConfigFile -DockerFile $DockerFile -NewScript $TEMP_BITWARDEN_SCRIPT_FILE_PATH
+    try {
+        $UPDATE_NEEDED = Confirm-ZHLBWUpdate -ConfigFile $ConfigFile -DockerFile $DockerFile -NewScript $TEMP_BITWARDEN_SCRIPT_FILE_PATH -ErrorAction Stop
+    } catch {
+        Write-Log -EntryType Warning -Message "Main: Failed confirming whether we could update due to error $_"
+        Remove-ZHLBWItems -Items $BW_ITEMS
+        exit $exitcode_CouldNotConfirmUpdate
+    }
 
     if (-not $UPDATE_NEEDED) {
         Write-Log "Main: We do not need to update, removing downloaded files."
@@ -539,6 +544,7 @@ PROCESS {
         if ((Get-Job -Name 'Update').State -eq 'Running') {
             Get-Job -Name 'Update' | Stop-Job
         }
+        Receive-job -Name 'Update' | Out-File -FilePath $LogFile -Append
         Get-Job -Name 'Update' | Remove-Job
         Remove-ZHLBWItems -Items $BW_ITEMS
         exit $exitcode_TooLongForUpdate
@@ -546,39 +552,47 @@ PROCESS {
 
     # Update job was completed, did we get an update?
     if ($UPDATE_STATE -eq 'Completed') {
-        Write-Log "Main: Checking if we actually updated..."
+        Write-Log "Main: Job 'Update' completed! Checking if we updated..."
 
         # This should return false as if we did update, our BitWarden version should match the new versions
-        $DID_WE_UPDATE = Confirm-ZHLBWUpdate -ConfigFile $ConfigFile -DockerFile $DockerFile -NewScript $CURRENT_BITWARDEN_SCRIPT_FILE_PATH
+        try {
+            $DID_WE_UPDATE = Confirm-ZHLBWUpdate -ConfigFile $ConfigFile -DockerFile $DockerFile -NewScript $CURRENT_BITWARDEN_SCRIPT_FILE_PATH -ErrorAction Stop
+        } catch {
+            Write-Log -EntryType Warning -Message "Main: Failed confirming if we need to update or not due to error $_"
+            Remove-ZHLBWItems -Items $BW_ITEMS
+            Get-Job -Name 'Update' | Remove-Job
+            exit $exitcode_CouldNotConfirmUpdate
+        }
 
+        # If we were at our latest version, this would return false. 
         if (-not $DID_WE_UPDATE) {
             # Append the job results to our log file and remove the backup
             Receive-job -Name 'Update' | Out-File -FilePath $LogFile -Append
             Get-Job -Name 'Update' | Remove-Job
 
             Write-Log "Main: Successfully updated!"
+        } else {
+            Write-Log -EntryType Warning -Message "Main: Update failed. Storing results of job to the log file."
+            # Append the job results to our log file and remove the backup
+            Receive-job -Name 'Update' | Out-File -FilePath $LogFile -Append
+            Get-Job -Name 'Update' | Remove-Job
+            # Cleanup Items
+            Remove-ZHLBWItems -Items $BW_ITEMS
+            exit $exitcode_UpdateFailed
         }
-
-        Write-Log -EntryType Warning -Message "Main: Update failed. Storing results of job in the log file."
-        # Append the job results to our log file and remove the backup
-        Receive-job -Name 'Update' | Out-File -FilePath $LogFile -Append
-        Get-Job -Name 'Update' | Remove-Job
-        # Cleanup Items
-        Remove-ZHLBWItems -Items $BW_ITEMS
-        $exitcode_UpdateFailed
     }
     #endregion
 
     #region Send Email of Version Changes
-    Write-Log "Main: Retrieve updated version values for BitWarden..."
+    Write-Log "Main: Retrieve updated software version values of BitWarden..."
 
     # Retrieve current version info
-    $LATEST_CORE_ID = Get-ZHLBWCoreID -DockerFile $DockerFile
-    $LATEST_WEB_ID = Get-ZHLBWWebID -DockerFile $DockerFile
-    $KEY_CONNECTOR_STATUS = Get-ZHLBWKeyConnectorStatus -ConfigFile $ConfigFile
+    $LATEST_CORE_ID = (Get-ZHLBWCoreID -DockerFile $DockerFile).split(':')[-2]
+    $LATEST_WEB_ID = (Get-ZHLBWWebID -DockerFile $DockerFile).split(':')[-2]
 
-    if ($KEY_CONNECTOR_STATUS) {
-        $LATEST_KEYCONNECTOR_ID = Get-ZHLBWKeyConnectorID -DockerFile $DockerFile
+    # We checked earlier if this was enabled or not
+    if ($KEY_CONNECTOR_ENABLED -eq 'true') {
+        $LATEST_KEYCONNECTOR_ID = (Get-ZHLBWKeyConnectorID -DockerFile $DockerFile).split(':')[-2]
     }
 
     Write-Log "Main: Latest Core ID: $LATEST_CORE_ID"
@@ -588,18 +602,18 @@ PROCESS {
     }
 
     # Send email of the update
-    $EMAIL_DATA = "" | Select-Object CURRENT_CORE_ID, LATEST_CORE_ID, CURRENT_WEB_ID, LATEST_WEB_ID, CURRENT_KEYCONNECTOR_ID, LATEST_KEYCONNECTOR_ID, BACKUP_FILE
-    $EMAIL_DATA.CURRENT_CORE_ID = $CURRENT_CORE_ID
-    $EMAIL_DATA.LATEST_CORE_ID = $LATEST_CORE_ID
-    $EMAIL_DATA.CURRENT_WEB_ID = $CURRENT_WEB_ID
-    $EMAIL_DATA.LATEST_WEB_ID = $LATEST_WEB_ID
-    if ($null -ne $CURRENT_KEYCONNECTOR_ID) {
-        $EMAIL_DATA.CURRENT_KEYCONNECTOR_ID = $CURRENT_KEYCONNECTOR_ID
-        $EMAIL_DATA.LATEST_KEYCONNECTOR_ID = $LATEST_KEYCONNECTOR_ID
-    }
-    $EMAIL_DATA.BACKUP_FILE = $ENCRYPTED_BACKUP_FILE_NAME
-
     if ($PSBoundParameters.ContainsKey('EmailAddresses') -and $PSBoundParameters.ContainsKey('From') -and $PSBoundParameters.ContainsKey('SMTPServer')) {
+        $EMAIL_DATA = "" | Select-Object CURRENT_CORE_ID, LATEST_CORE_ID, CURRENT_WEB_ID, LATEST_WEB_ID, CURRENT_KEYCONNECTOR_ID, LATEST_KEYCONNECTOR_ID, BACKUP_FILE
+        $EMAIL_DATA.CURRENT_CORE_ID = $CURRENT_CORE_ID
+        $EMAIL_DATA.LATEST_CORE_ID = $LATEST_CORE_ID
+        $EMAIL_DATA.CURRENT_WEB_ID = $CURRENT_WEB_ID
+        $EMAIL_DATA.LATEST_WEB_ID = $LATEST_WEB_ID
+        if ($null -ne $CURRENT_KEYCONNECTOR_ID) {
+            $EMAIL_DATA.CURRENT_KEYCONNECTOR_ID = $CURRENT_KEYCONNECTOR_ID
+            $EMAIL_DATA.LATEST_KEYCONNECTOR_ID = $LATEST_KEYCONNECTOR_ID
+        }
+        $EMAIL_DATA.BACKUP_FILE = $ENCRYPTED_BACKUP_FILE_NAME
+
         try {
             Write-Log "Main: Attempting to send update report email..."
             Send-ZHLBWUpdateEmail -EmailAddresses $EmailAddresses -From $From -SmtpServer $SMTPServer -Subject "BitWarden Update Results" -Data $EMAIL_DATA -ErrorAction Stop
