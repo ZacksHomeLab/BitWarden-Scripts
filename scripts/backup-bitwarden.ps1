@@ -111,7 +111,7 @@ param (
 
     [Parameter(Mandatory=$false,
         Position=5)]
-    [string]$LogFile = './backup-bitwarden.log'
+    [string]$LogFile = './backup-bitwarden.log',
 
     [Parameter(Mandatory=$false,
         Position=6)]

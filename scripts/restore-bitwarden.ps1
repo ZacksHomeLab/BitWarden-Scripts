@@ -54,7 +54,7 @@ param (
         Position=3,
         ValueFromPipelineByPropertyName)]
         [ValidateScript({Test-Path -Path $_})]
-    [string]$BitWardenDir = '/opt/bitwarden'
+    [string]$BitWardenDir = '/opt/bitwarden',
 
     [Parameter(Mandatory=$false, 
         Position=4)]
