@@ -205,7 +205,7 @@ BEGIN {
 
             [parameter(Mandatory=$false, Position=2)]
             [ValidateNotNullOrEmpty()]
-            [string]$Path = $script:LOG_FILE,
+            [string]$Path = $script:LOG_FILE
         )
         
         begin {

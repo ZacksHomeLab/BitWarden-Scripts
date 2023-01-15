@@ -125,7 +125,7 @@ param (
     [Parameter(Mandatory=$false,
         Position=8,
         HelpMessage="What's the email address that'll send the email?")]
-    [string]$From,
+    [string]$From
 )
 
 BEGIN {
@@ -146,19 +146,6 @@ BEGIN {
 
     # Path of the Vault log (this is used to determine if we need to make an incremental backup)
     $VAULT_LOG = "/opt/bitwarden/bwdata/mssql/data/vault_log.ldf"
-
-    # Generate a backup name if one wasn't provided
-    if (-not $PSBoundParameters.ContainsKey('BackupName')) {
-        $BACKUP_NAME = New-ZHLBWBackupName -Directory $FINAL_BACKUP_LOCATION
-    } else {
-        $BACKUP_NAME = $BackupName
-    }
-
-    # The file path of the Encrypted Backup
-    $ENCRYPTED_BACKUP_NAME = "$BACKUP_NAME.gpg"
-
-    # Add the items or directories to be removed by the script if we encounter an error or end said script
-    $CLEANUP_ITEMS = @($ENCRYPTED_BACKUP_NAME, $BACKUP_NAME)
 
     # Send Emails if this is true
     if ($PSBoundParameters.ContainsKey('EmailAddresses') -and $PSBoundParameters.ContainsKey('From') -and $PSBoundParameters.ContainsKey('SMTPServer')) {
@@ -185,7 +172,7 @@ BEGIN {
 
             [parameter(Mandatory=$false, Position=2)]
             [ValidateNotNullOrEmpty()]
-            [string]$Path = $script:LOG_FILE,
+            [string]$Path = $script:LOG_FILE
         )
         
         begin {
@@ -228,13 +215,31 @@ PROCESS {
     # Verify if we can import the ZHLBitWarden Module:
     if (-not (Get-Module -Name ZHLBitWarden -ErrorAction SilentlyContinue)) {
         try {
-            Import-Module -Name ZHLBitWarden -ErrorAction Stop
+            if (Test-Path -Path "$($Home)/.local/share/powershell/Modules/ZHLBitWarden.psm1") {
+                Import-Module -Name "$($Home)/.local/share/powershell/Modules/ZHLBitWarden.psm1"
+            } elseif (Test-Path -Path "/usr/local/share/powershell/Modules/ZHLBitWarden.psm1") {
+                Import-Module -Name "/usr/local/share/powershell/Modules/ZHLBitWarden.psm1" -ErrorAction Stop
+            }
+            
         } catch {
             Write-Log -EntryType Warning -Message "Main: Error importing PowerShell Module ZHLBitWarden."
-            Write-Log -EntryType Warning -Message "Main: Verify the module exists in '/usr/local/share/powershell/Modules'"
+            Write-Log -EntryType Warning -Message "Main: Verify the module exists in '$($Home)/.local/share/powershell/Modules/ OR /usr/local/share/powershell/Modules/'"
             exit $exitcode_MissingZHLBitWardenModule
         }
     }
+
+    # Generate a backup name if one wasn't provided
+    if (-not $PSBoundParameters.ContainsKey('BackupName')) {
+        $BACKUP_NAME = New-ZHLBWBackupName -Directory $FINAL_BACKUP_LOCATION
+    } else {
+        $BACKUP_NAME = $BackupName
+    }
+
+    # The file path of the Encrypted Backup
+    $ENCRYPTED_BACKUP_NAME = "$BACKUP_NAME.gpg"
+
+    # Add the items or directories to be removed by the script if we encounter an error or end said script
+    $CLEANUP_ITEMS = @($ENCRYPTED_BACKUP_NAME, $BACKUP_NAME)
     #endregion
 
 
@@ -305,7 +310,7 @@ PROCESS {
     }
 
     # Verify the backup is at its final location
-    if (-not Test-Path -Path $ENCRYPTED_BACKUP_NAME) {
+    if (-not (Test-Path -Path $ENCRYPTED_BACKUP_NAME)) {
         Write-Log -EntryType Warning -Message "Main: Could not find created backup $ENCRYPTED_BACKUP_NAME."
         if ($CAN_SEND_EMAIL) {
             Send-ZHLBWEmail -EmailAddresses $EmailAddresses -From $From -SmtpServer $SMTPServer -Subject "FAILURE: BitWarden Backup" -Body "Successfully created backup but could not find it after moving to $ENCRYPTED_BACKUP_NAME"

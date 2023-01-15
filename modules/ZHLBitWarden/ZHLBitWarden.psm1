@@ -184,7 +184,7 @@ function Backup-ZHLBWBitWarden {
         [parameter(Mandatory,
             Position=1,
             HelpMessage="Enter the name of your backup. It must end with .tar")]
-            [ValidateScript({$_ -match '(*.)\.tar$'})]
+            [ValidateScript({$_ -match '(.*)\.tar$'})]
         [string]$BackupName
     )
 
