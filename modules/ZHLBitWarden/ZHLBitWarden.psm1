@@ -1324,15 +1324,15 @@ function Send-ZHLBWUpdateEmail {
 
         [parameter(Mandatory=$false,
             Position=1)]
-        [string]$From = "",
+        [string]$From,
 
         [parameter(Mandatory=$false,
             Position=2)]
-        [string]$SMTPServer = "",
+        [string]$SMTPServer,
 
         [parameter(Mandatory=$false,
             Position=3)]
-        [string]$Subject = "",
+        [string]$Subject,
 
         [parameter(Mandatory,
             Position=4)]
@@ -1410,7 +1410,7 @@ function Send-ZHLBWUpdateEmail {
           <ul>
           <li><p>Open PowerShell: <span style="border: 1px solid black">sudo pwsh </span></p></li>
           <li><p>Browse to BitWarden's Directory: <span style="border: 1px solid black">cd /opt/bitwarden </span></p></li>
-          <li><p>Restore Backup: <span style="border: 1px solid black">./Restore-BitWardenBackup.ps1 -Passwordfile /opt/bitwarden/password_file -BackupFile $BACKUP_FILE</span></p></li>
+          <li><p>Restore Backup: <span style="border: 1px solid black">./restore-bitwarden.ps1 -Passwordfile /opt/bitwarden/password_file -BackupFile $BACKUP_FILE</span></p></li>
           </ul>
         </ul>
 "@
@@ -1458,7 +1458,7 @@ function Send-ZHLBWUpdateEmail {
           <ul>
           <li><p>Open PowerShell: <span style="border: 1px solid black">sudo pwsh </span></p></li>
           <li><p>Browse to BitWarden's Directory: <span style="border: 1px solid black">cd /opt/bitwarden </span></p></li>
-          <li><p>Restore Backup: <span style="border: 1px solid black">./Restore-BitWardenBackup.ps1 -Passwordfile /opt/bitwarden/password_file -BackupFile $BACKUP_FILE</span></p></li>
+          <li><p>Restore Backup: <span style="border: 1px solid black">./restore-bitwarden.ps1 -Passwordfile /opt/bitwarden/password_file -BackupFile $BACKUP_FILE</span></p></li>
           </ul>
         </ul>
 "@
