@@ -1,3 +1,28 @@
+<#
+.Synopsis
+    This script will renew BitWarden's Let's Encrypt certificate.
+.DESCRIPTION
+    This script will renew BitWarden's Let's Encrypt certificate.
+.PARAMETER ConfigFile
+    The path of the docker configuration file for BitWarden (default is: '/opt/bitwarden/bwdata/config.yml')
+.PARAMETER URL
+    The URL of your BitWarden instance. If one isn't provided, the script will retrieve it from ConfigFile.
+.PARAMETER BitWardenScript
+    The path of BitWarden's service script (default is: '/opt/bitwarden/bitwarden.sh').
+.PARAMETER ServiceAccount
+    The name of your service account for the BitWarden service (default is: bitwarden).
+.PARAMETER LogFile
+    The path of the log file to store the output of this script (default is: './Update-BitWardenSSL.log').
+.EXAMPLE
+    ./update-bitwardenSSL.ps1
+
+    The above will utilize the default values to renew BitWarden's SSL certificate with Let's Encrypt.
+.NOTES
+    Author - Zack
+.LINK
+    GitHub (Scripts) - https://github.com/ZacksHomeLab/BitWarden-Scripts
+    GitHub (Documentation) - https://github.com/ZacksHomeLab/BitWarden
+#>
 [cmdletbinding()]
 param (
     [parameter(Mandatory=$false,
@@ -5,27 +30,35 @@ param (
     [ValidateScript({(Test-Path -Path $_) -and ($_ -match "^(.*)\.yml$")})]
     [string]$ConfigFile = '/opt/bitwarden/bwdata/config.yml',
 
-    [parameter(Mandatory,
+    [parameter(Mandatory=$false,
         Position=1,
         HelpMessage="What is the URL of your BitWarden website? (e.g., bitwarden.zackshomelab.com)")]
         [ValidateScript({$_ -Match "[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)"})]
     [string]$URL,
 
+    [Parameter(Mandatory=$false,
+        Position=3,
+        ValueFromPipelineByPropertyName,
+        helpMessage="What's the name and path of the Bitwarden service script? (Must end in .sh)")]
+        [ValidateScript({Test-Path -Path $_ -and $_ -match "^(.*)\.sh$"})]
+    [string]$BitWardenScript = '/opt/bitwarden/bitwarden.sh',
+
     [parameter(Mandatory=$false,
-        Position=2,
+        Position=4,
         helpMessage="What is the username of the service account for your server (e.g., bitwarden)?")]
         [ValidateNotNullOrEmpty()]
     [string]$ServiceAccount = 'bitwarden',
 
     [Parameter(Mandatory=$false, 
-        Position=3)]
+        Position=5)]
     [string]$LogFile = "./Update-BitWardenSSL.log"
 )
 
 begin {
     #region Variables
+    $script:LOG_FILE = $LogFile
 
-    # Retrieve the URL ourselves 
+    # Retrieve the URL ourselves (if one wasn't provided)
     if (-not $PSBoundParameters.containskey('URL')) {
         $URL = (Select-String -Path $ConfigFile -Pattern "URL:").tostring().split('http://')[-1]
     } else {
@@ -52,20 +85,37 @@ begin {
     $BITWARDEN_SSL_FULLCHAIN = "/opt/bitwarden/bwdata/ssl/$URL/fullchain.pem"
     $BITWARDEN_SSL_CA_FILE = "/opt/bitwarden/bwdata/ssl/$URL/chain.pem"
 
+    # This array will be used to validate if the below files actually exist. If they don't, the script will NOT run.
     $ITEMS_TO_VERIFY = @($LE_PRIVATE_KEY, $LE_FULLCHAIN, $LE_CA_FILE, $BITWARDEN_SSL_PRIVATE_KEY, $BITWARDEN_SSL_FULLCHAIN, $BITWARDEN_SSL_CA_FILE)
     $ITEMS_MISSING = @()
+
+
+    # Reset these variables
+    $SUCCESS = $null
+    $CERTBOT = $null
+    $CHOWN = $null
+    $item = $null
     #endregion
 
 
 
     #region Exit Codse
     $exitcode_DidNotRenew = 1
+    $exitcode_FoundSSLFiles = 2
+
     $exitcode_NotRoot = 10
     $exitcode_MissingFiles = 11
     $exitcode_MissingCertbot = 12
+    $exitcode_MissingChown = 13
+    $exitcode_FailRunningCertbot = 14
+    $exitcode_MissingZHLBitWardenModule = 15
+    $exitcode_MissingSSLFiles = 16
+    $exitcode_FailReplacePrivateKey = 17
+    $exitcode_FailReplaceFullChain = 18
+    $exitcode_FailReplaceCA = 19
+    $exitcode_FailUpdatingOwnership = 20
+    $exitcode_FailRestartingBitWarden = 21
     #endregion
-
-
 
     #region Functions
     function Write-Log {
@@ -107,8 +157,6 @@ begin {
     }
     #endregion
     
-    
-    
     #region Pre-Reqs
     # Check if the user is root
     if ($PSVersionTable.Platform -eq "Unix") {
@@ -118,41 +166,122 @@ begin {
         }
     }
 
+    # Verify if we can import the ZHLBitWarden Module:
+    if (-not (Get-Module -Name ZHLBitWarden -ErrorAction SilentlyContinue)) {
+        try {
+            if (Test-Path -Path "$($Home)/.local/share/powershell/Modules/ZHLBitWarden.psm1") {
+                Import-Module -Name "$($Home)/.local/share/powershell/Modules/ZHLBitWarden.psm1"
+            } elseif (Test-Path -Path "/usr/local/share/powershell/Modules/ZHLBitWarden.psm1") {
+                Import-Module -Name "/usr/local/share/powershell/Modules/ZHLBitWarden.psm1" -ErrorAction Stop
+            }
+            
+        } catch {
+            Write-Log -EntryType Warning -Message "Main: Error importing PowerShell Module ZHLBitWarden."
+            Write-Log -EntryType Warning -Message "Main: Verify the module exists in '$($Home)/.local/share/powershell/Modules/ OR /usr/local/share/powershell/Modules/'"
+            exit $exitcode_MissingZHLBitWardenModule
+        }
+    }
     # Verify certbot is installed
     if (-not (Get-Command -Name 'certbot' -ErrorAction SilentlyContinue)) {
         Write-Log -EntryType Warning -Message "Main: Missing the certbot command, is it installed?"
         exit $exitcode_MissingCertbot
+    } else {
+        # Store the path of CertBot into this variable
+        $CERTBOT = (Get-Command -Name 'certbot' | Select-Object -first 1).Source
+    }
+
+    # Verify chown exists
+    if (-not (Get-Command -Name 'chown' -ErrorAction SilentlyContinue)) {
+        Write-Log -EntryType Warning -Message "Main: Missing the chown command. This is required to update SSL Certificate ownership."
+        exit $exitcode_MissingChown
+    } else {
+        # Store the path of CertBot into this variable
+        $CHOWN = (Get-Command -Name 'chown' | Select-Object -first 1).Source
+    }
+
+    # Verify we have all the required SSL files
+    Write-Log "Main: Verify if we have all the required files to run this script."
+    $SUCCESS = Test-ZHLBWSSLFiles -Data $ITEMS_TO_VERIFY
+
+    if (-not $SUCCESS) {
+        Write-Log -EntryType Warning -Message "Main: You do not have the required files to utilize this script, stopping."
+        exit $exitcode_MissingSSLFiles
+    } else {
+        Write-Log "Main: All the SSL files have been validated. Proceed with renewal."
     }
     #endregion
 }
 
 process {
-    # Let's Renew our SSL Certificate
-    Write-Log "Main: Running Certbot..."
-    #/usr/bin/certbot renew
 
-    
-    # Before we do anything, let's check if our SSL Certificate updated within the last 24 hours
-    if (Get-Item -path $LE_PRIVATE_KEY | Where-Object LastWriteTime -ge ((Get-Date).AddDays(-1))) {
-        foreach ($Item in $ITEMS_TO_VERIFY) {
-            # Verify the item exists
-            if (-not (Test-Path -Path $Item)) {
-                Write-Log -EntryType Warning -Message "Main: Item $Item is missing. Is your URL correct?"
-                $ITEMS_MISSING += $Item
-            }
-        }
-        if ($null -ne $ITEMS_MISSING) {
-            Write-Log -EntryType Warning -Message "Main: You're missing the following items:"
-            foreach ($ITEM_MISSING in $ITEMS_MISSING) {
-                Write-Log -EntryType Warning "Item: $ITEM_MISSING"
-            }
-            exit $exitcode_MissingFiles
-        }   
-        Write-Log "Main: Appears that we have everything needed to proceed."
-
-
+    #region Renew SSL Certificate
+    try {
+        Write-Log "`nMain: Renewing SSL certificate with Certbot..."
+        Start-Process -FilePath $CERTBOT -ArgumentList "renew" -Wait -RedirectStandardError $script:LOG_FILE -ErrorAction Stop
+    } catch {
+        Write-Log -EntryType Warning -Message "Main: Failed running certbot with error $_"
+        exit $exitcode_FailRunningCertbot
     }
-} else {
-    Write-Log "Main: SSL Certificate has not renewed in the last 24 hours."
-    exit $exitcode_DidNotRenew
+    #endregion
+
+
+    #region Verify if SSL Certificate renewed
+    Write-Log "`nMain: Certbot finished running, validating if our SSL certificated renewed for $URL..."
+    # This would return true if our SSL certificate did NOT renew
+    if (-not (Get-Item -Path $LE_PRIVATE_KEY | Where-Object LastWriteTime -ge ((Get-Date).AddDays(-1)))) {
+        Write-Log "Main: SSL Certificate for $URL is not due for renewal. Stopping."
+        exit $exitcode_DidNotRenew
+    }
+
+    Write-Log "Main: SSL Certificate has renewed. BitWarden's Files must be updated."
+    #endregion
+
+    #region Replace BitWarden's files
+    Write-Log "`nMain: Replacing $BITWARDEN_SSL_PRIVATE_KEY with $LE_PRIVATE_KEY"
+    # '-L follows symbolic links
+    yes | cp -Lf $LE_PRIVATE_KEY $BITWARDEN_SSL_PRIVATE_KEY
+    if ($LastExitCode -ne 0) {
+        Write-Log -EntryType Warning -Message "Main: Failed replacing $BITWARDEN_SSL_PRIVATE_KEY with $LE_PRIVATE_KEY."
+        exit $exitcode_FailReplacePrivateKey
+    }
+
+    Write-Log "Main: Replacing $BITWARDEN_SSL_FULLCHAIN with $LE_FULLCHAIN"
+    # '-L follows symbolic links
+    yes | cp -Lf $LE_FULLCHAIN $BITWARDEN_SSL_FULLCHAIN
+    if ($LastExitCode -ne 0) {
+        Write-Log -EntryType Warning -Message "Main: Failed replacing $BITWARDEN_SSL_FULLCHAIN with $LE_FULLCHAIN."
+        exit $exitcode_FailReplaceFullChain
+    }
+
+    Write-Log "Main: Replacing $BITWARDEN_SSL_CA_FILE with $LE_CA_FILE"
+    # '-L follows symbolic links
+    yes | cp -Lf $LE_CA_FILE $BITWARDEN_SSL_CA_FILE
+    if ($LastExitCode -ne 0) {
+        Write-Log -EntryType Warning -Message "Main: Failed replacing $BITWARDEN_SSL_CA_FILE with $LE_CA_FILE."
+        exit $exitcode_FailReplaceCA
+    }
+    #endregion
+
+    #region Change ownership of BitWarden's SSL files
+    try {
+        Write-Log "`nMain: Changing ownership of BitWarden's SSL files to service account $SERVICE_ACCOUNT."
+        Start-Process -FilePath $CHOWN -ArgumentList "$SERVICE_ACCOUNT $BITWARDEN_SSL_PRIVATE_KEY $BITWARDEN_SSL_FULLCHAIN $BITWARDEN_SSL_CA_FILE" -Wait `
+            -RedirectStandardError $script:LOG_FILE -ErrorAction Stop
+    } catch {
+        Write-Log -EntryType Warning -Message "Main: Failed changing ownership of BitWarden's SSL files. Due to error $_"
+        exit $exitcode_FailUpdatingOwnership
+    }
+    
+    #endregion
+
+
+    #region Restart BitWarden
+    try {
+        Write-Log "`nMain: Restart BitWarden for the new SSL certificates."
+        Restart-ZHLBWBitWarden -ScriptLocation $BitWardenScript -ErrorAction Stop
+    } catch {
+        Write-Log -EntryType Warning -Message "Main: Failed restarting BitWarden due to error $_"
+        exit $exitcode_FailRestartingBitWarden
+    }
+    #endregion
 }

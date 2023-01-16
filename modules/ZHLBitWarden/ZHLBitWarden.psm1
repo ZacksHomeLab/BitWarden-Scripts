@@ -1471,9 +1471,64 @@ function Send-ZHLBWUpdateEmail {
         }
     }
 }
+
+function Test-ZHLBWSSLFiles {
+<#
+.Synopsis
+    This function will verify if you have all the necesasry SSL files for renewal.
+.DESCRIPTION
+    This function will verify a given array of files and verify if said files will exist. The output will be true or false if you have everything.
+.PARAMETER Data
+    The array of items to be validated.
+.EXAMPLE
+    $URL = 'bitwarden.zackshomelab.com'
+    $ITEMS_TO_VERIFY = @("/etc/letsencrypt/live/$URL/privkey.pem", "/etc/letsencrypt/live/$URL/fullchain.pem", "/etc/letsencrypt/live/$URL/chain.pem")
+    
+    Test-ZHLBWSSLFiles -Data $ITEMS_TO_VERIFY
+    
+    The above will verify all the items within ITEMS_TO_VERIFY exist. If they exist, Test-ZHLBWSSLFiles will return True.
+.INPUTS
+    System.Object[]
+.OUTPUTS
+    Boolean
+#>
+    [cmdletbinding()]
+    param (
+        [parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [System.Object[]]$Data
+    )
+
+    begin {
+        $SUCCESS = $true
+        $ITEMS_MISSING = @()
+        $ITEM_MISSING = $null
+        $Item = $null
+    }
+    process {
+        # If any of our items fail validation, set Success to False
+        foreach ($Item in $Data) {
+            # Verify the item exists
+            if (-not (Test-Path -Path $Item)) {
+                $ITEMS_MISSING += $Item
+            }
+        }
+        # If ITEMS_MISSING is greater than 0, output what's missing
+        if ($ITEMS_MISSING.count -gt 0) {
+            Write-Warning "Test-ZHLBWSSLFiles: You're missing the following items:"
+            foreach ($ITEM_MISSING in $ITEMS_MISSING) {
+                Write-Warning "Test-ZHLBWSSLFiles: Missing $ITEM_MISSING"
+            }
+            $SUCCESS = $false
+        }   
+    }
+    end {
+        return $SUCCESS
+    }
+}
 #endregion
 
 Export-ModuleMember -Function New-ZHLBWBackupName, New-ZHLBWBackupDecryptionName, New-ZHLBWBackupExtractionName, Backup-ZHLBWBitWarden, Remove-ZHLBWBackups, `
 Lock-ZHLBWBackup, Unlock-ZHLBWBackup, Expand-ZHLBWBackup, Restore-ZHLBWBackup, Stop-ZHLBWBitwarden, Start-ZHLBWBitwarden, Restart-ZHLBWBitWarden, Update-ZHLBWBitWardenScripts, `
 Install-ZHLBWBitWardenScripts, Update-ZHLBWScriptPermissions, Get-ZHLBWWebID, Get-ZHLBWCoreID, Get-ZHLBWKeyConnectorStatus, Get-ZHLBWKeyConnectorID, Get-ZHLBWRunScriptURL, `
-Get-ZHLBWScriptURL, Confirm-ZHLBWUpdate, Remove-ZHLBWItems, Send-ZHLBWEmail, Send-ZHLBWUpdateEmail, Get-ZHLBWExtractedItems
+Get-ZHLBWScriptURL, Confirm-ZHLBWUpdate, Remove-ZHLBWItems, Send-ZHLBWEmail, Send-ZHLBWUpdateEmail, Get-ZHLBWExtractedItems, Test-ZHLBWSSLFiles

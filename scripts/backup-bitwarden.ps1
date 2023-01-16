@@ -51,6 +51,11 @@
     
     Perform an incremental Bitwarden Backup with the provided password file and cleanup backups to only allow 10 days worth of backups to be stored at the final destination. Also, 
     set the script's log file to be stored at /root/bitwarden_backup.log'
+.NOTES
+    Author - Zack
+.LINK
+    GitHub (Scripts) - https://github.com/ZacksHomeLab/BitWarden-Scripts
+    GitHub (Documentation) - https://github.com/ZacksHomeLab/BitWarden
 #>
 [cmdletbinding()]
 param (

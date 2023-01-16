@@ -18,6 +18,11 @@
 .EXAMPLE
     ./restore-bitwarden.ps1 -Passwordfile ./password_file -BackupFile /backups/BitWardenBackup-2022-05-13_00-00-03.tar.gpg
     Restore a backup file with a given password file
+.NOTES
+    Author - Zack
+.LINK
+    GitHub (Scripts) - https://github.com/ZacksHomeLab/BitWarden-Scripts
+    GitHub (Documentation) - https://github.com/ZacksHomeLab/BitWarden
 #>
 [cmdletbinding()]
 param (
