@@ -1297,7 +1297,7 @@ function Send-ZHLBWEmail {
             To = $EmailAddresses
             From = $From
             Subject = $Subject
-            $Body = $Body
+            Body = $Body
             BodyAsHtml = $true
             SMTPServer = $SMTPServer
             Port = $SMTPPort
@@ -1387,9 +1387,6 @@ function Send-ZHLBWUpdateEmail {
     BEGIN {
         $Body = $null  
 
-        # Set SMTPPort to an int
-        $SMTPPort = $SMTPPort -as [int]
-
         $CURRENT_CORE_ID = $Data.CURRENT_CORE_ID
         $LATEST_CORE_ID = $Data.LATEST_CORE_ID
         $CURRENT_WEB_ID = $Data.CURRENT_WEB_ID
@@ -1401,6 +1398,8 @@ function Send-ZHLBWUpdateEmail {
             $LATEST_KEYCONNECTOR_ID = $Data.LATEST_KEYCONNECTOR_ID
         }
         $BACKUP_FILE = $Data.BACKUP_FILE
+
+        $SMTPPort = $SMTPPort -as [int]
 
         # Build splat of parameters
         $Params = @{
@@ -1417,7 +1416,6 @@ function Send-ZHLBWUpdateEmail {
         if ($UseSSL -eq 'True') {
             $Params.add('UseSSL', $true)
         }
-        $Params.add('ErrorAction', 'Stop')
     }
 
     PROCESS {
@@ -1529,13 +1527,10 @@ function Send-ZHLBWUpdateEmail {
 "@
         }
 
-        # Add body to the parameter splat
-        $Params.add('body', $Body)
-
         try {
             [System.Net.ServicePointManager]::SecurityProtocol = 'TLS12'
             Write-Verbose "Send-ZHLBWUpdateEmail: Attempting to send update email..."
-            Send-MailMessage @Params
+            Send-MailMessage @Params -Body $Body -ErrorAction Stop
         } catch {
             Throw "Send-ZHLBWUpdateEmail: Failed sending email due to $_"
         }

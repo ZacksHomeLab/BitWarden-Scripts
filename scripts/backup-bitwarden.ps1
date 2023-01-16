@@ -109,6 +109,9 @@ param (
     [parameter(Mandatory,
         Position=2,
         ParameterSetName='IncrementPasswordPhraseSendEmail')]
+    [parameter(Mandatory,
+        Position=2,
+        ParameterSetName='IncrementPasswordFileSendEmail')]
     [switch]$Incremental,
 
     [parameter(Mandatory,
@@ -120,6 +123,9 @@ param (
     [parameter(Mandatory,
         Position=2,
         ParameterSetName='AllPasswordFileSendEmail')]
+    [parameter(Mandatory,
+        Position=2,
+        ParameterSetName='AllPasswordPhraseSendEmail')]
     [switch]$All,
 
     [parameter(Mandatory=$false,
@@ -168,7 +174,7 @@ param (
         Position=7,
         ParameterSetName='AllPasswordPhraseSendEmail',
         helpMessage="What Email Addresses should receive the update report? (Must also add '-SendEmail' switch to enable this)")]
-    [string[]]$EmailAddresses,
+    [string[]]$EmailAddresses
 )
 
 BEGIN {
@@ -195,6 +201,8 @@ BEGIN {
 
     # Email settings will be stored in this hash table
     $EMAIL_SETTINGS = @{}
+
+    $SEND_EMAIL = $false
     #endregion
 
 
@@ -295,6 +303,8 @@ PROCESS {
 
     #region Gather Email Settings
     if ($PSCmdlet.ParameterSetName -like '*SendEmail*') {
+        $SEND_EMAIL = $true
+
         # The location of the global environment variables. Verify it exists.
         $GLOBAL_ENV = '/opt/bitwarden/bwdata/env/global.override.env'
         if (-not (Test-Path -Path $GLOBAL_ENV)) {
@@ -321,7 +331,6 @@ PROCESS {
         if ($null -ne $PASS) {
             $EMAIL_PARAMS.add('Creds', $EMAIL_SETTINGS['Creds'])
         }
-        $EMAIL_PARAMS.add('ErrorAction', 'Stop')
     }
     #endregion
 

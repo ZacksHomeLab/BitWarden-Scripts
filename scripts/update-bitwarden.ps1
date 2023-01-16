@@ -666,13 +666,11 @@ PROCESS {
             $EMAIL_DATA.LATEST_KEYCONNECTOR_ID = $LATEST_KEYCONNECTOR_ID
         }
         $EMAIL_DATA.BACKUP_FILE = $ENCRYPTED_BACKUP_FILE_NAME
-        $EMAIL_PARAMS.add('Data', $EMAIL_DATA)
-        $EMAIL_PARAMS.add('ErrorAction', 'Stop')
 
         # Send the email
         try {
             Write-Log "Main: Attempting to send update report email..."
-            Send-ZHLBWUpdateEmail @EMAIL_PARAMS
+            Send-ZHLBWUpdateEmail @EMAIL_PARAMS -Data $EMAIL_DATA -ErrorAction Stop
         } catch {
             Write-Log -EntryType Warning -Message "Main: Failed sending email report due to $_"
             Remove-ZHLBWItems -Items $BW_ITEMS
