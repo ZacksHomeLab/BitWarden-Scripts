@@ -103,8 +103,8 @@ begin {
             [String]$Message,
 
             [Parameter(Mandatory=$false, Position=1)]
-            [ValidateSet('Verbose', 'Information', 'Warning', 'Error')]
-            [String]$EntryType = "Information",
+            [ValidateSet('Verbose', 'Info', 'Warning', 'Error')]
+            [String]$EntryType = "Info",
 
             [parameter(Mandatory=$false, Position=2)]
             [ValidateNotNullOrEmpty()]
@@ -121,12 +121,12 @@ begin {
         
         process {
             # Output to file
-            $Line = "[$EntryType][$((Get-Date).toString('yyyy-MM-dd:hh-mm-ss'))][$env:ComputerName], $Message"
+            $Line = "[$EntryType][$((Get-Date).toString('yyyy-MM-dd:hh-mm-ss'))], $Message"
             $Line | Out-File $Path -Append
             
             switch ($EntryType) {
                 'Verbose'     { Write-Verbose -Message $Message }
-                'Information' { Write-Output $Message }
+                'Info'        { Write-Output $Message }
                 'Warning'     { Write-Warning -Message $Message }
                 'Error'       { Write-Error -ErrorRecord $ErrorRecord }
             }
