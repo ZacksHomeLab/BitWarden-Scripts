@@ -510,14 +510,8 @@ function Expand-ZHLBWBackup {
     process {
         # If EXTRACT_DIRECTORY doesn't exist, create it
         if (-not (Test-Path -Path $EXTRACT_DIRECTORY)) {
-            Write-Verbose "Expand-ZHLBWBackup: Extract Location $EXTRACT_DIRECTORY doesn't exist, creating said location."
-            if ($PSVersionTable.Platform -eq 'Unix') {
-                Write-Verbose "Expand-ZHLBWBackup: (Linux Env) Attempting to create location $EXTRACT_DIRECTORY."
-                mkdir --parents $EXTRACT_DIRECTORY
-            } else {
-                Write-Verbose "Expand-ZHLBWBackup: Attempting to create location $EXTRACT_DIRECTORY."
-                New-Item -Path $EXTRACT_DIRECTORY -ItemType Directory -Force -ErrorAction Stop
-            }
+            Write-Verbose "Expand-ZHLBWBackup: Attempting to create location $EXTRACT_DIRECTORY."
+            New-Item -Path $EXTRACT_DIRECTORY -ItemType Directory -Force -ErrorAction Stop
         }
 
         # Extract Backup to Extract Location
