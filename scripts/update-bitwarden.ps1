@@ -19,12 +19,10 @@
 	BitWarden's PowerShell script for performing backups. Default value is /opt/bitwarden/backup-bitwarden.ps1
 .PARAMETER LogFile
     The location where the log file will reside. Default is ./update-bitwarden.log
+.PARAMETER SendEmail
+    Toggle this switch if you would like the script to send an email based off of your settings in the Global Environments file.
 .PARAMETER EmailAddresses
-    The email address(es) in which notifications will be sent out to.
-.PARAMETER SMTPServer
-    The SMTP Server the script will use to send emails from.
-.PARAMETER From
-    The Email Address that will be sending said emails.
+    Input the email addresses that should receive the email from this script.
 .PARAMETER SkipBackup
     Use this switch if you want to skip the backup before updating.
 .EXAMPLE
@@ -32,9 +30,9 @@
     
     Perform an update on BitWarden while performing a BitWarden Backup where it will be saved in directory /backups
 .EXAMPLE
-    ./update-bitwarden.ps1 -PasswordPhrase ("MY_PASSWORD" | ConvertTo-SecureString -AsPlainText) -FinalBackupLocation '/backups' -EmailAddresses @("test.email@company.com", "test2.email@company.com") -SMTPServer 'contoso-com.mail.protection.outlook.com' -from 'bitwarden@company.com'
+    ./update-bitwarden.ps1 -PasswordPhrase ("MY_PASSWORD" | ConvertTo-SecureString -AsPlainText) -FinalBackupLocation '/backups' -SendEmail -EmailAddresses @("test.email@company.com", "test2.email@company.com")
 
-    Perform an update on Bitwarden and email the recipients in EmailAddresses with the provided SMTP settings.
+    Update Bitwarden and email the recipients in EmailAddresses with the SMTP Settings found in '/opt/bitwarden/bwdata/env/global.override.env'
 .NOTES
     Author - Zack
 .LINK
@@ -47,6 +45,10 @@ param (
         Position=0,
         ValueFromPipeline,
         ParameterSetName='PasswordFile')]
+    [parameter(Mandatory,
+        Position=0,
+        ValueFromPipeline,
+        ParameterSetName='SendEmailPasswordFile')]
         [ValidateScript({Test-Path -Path $_})]
     [string]$PasswordFile,
 
@@ -54,6 +56,10 @@ param (
         Position=0,
         ValueFromPipeline,
         ParameterSetName='PasswordPhrase')]
+    [parameter(Mandatory,
+        Position=0,
+        ValueFromPipeline,
+        ParameterSetName='SendEmailPasswordPhrase')]
         [ValidateNotNullOrEmpty()]
     [System.Security.SecureString]$PasswordPhrase,
 
@@ -88,23 +94,26 @@ param (
         Position=6)]
     [string]$LogFile = './update-bitwarden.log',
 
-    [Parameter(Mandatory=$false,
+    [parameter(Mandatory,
         Position=7,
-        helpMessage="What Email Addresses should receive the update report?")]
+        ParameterSetName='SendEmailPasswordPhrase')]
+    [parameter(Mandatory,
+        Position=7,
+        ParameterSetName='SendEmailPasswordFile')]
+    [switch]$SendEmail,
+
+    [parameter(Mandatory,
+        Position=8,
+        ParameterSetName='SendEmailPasswordPhrase',
+        helpMessage="What Email Addresses should receive the update report? (Must also add '-SendEmail' switch to enable this)")]
+    [parameter(Mandatory,
+        Position=8,
+        ParameterSetName='SendEmailPasswordFile',
+        helpMessage="What Email Addresses should receive the update report? (Must also add '-SendEmail' switch to enable this)")]
     [string[]]$EmailAddresses,
 
     [Parameter(Mandatory=$false,
-        Position=8,
-        helpMessage="What's your SMTP Server's address? (e.g., contoso-com.mail.protection.outlook.com)")]
-    [string]$SMTPServer,
-
-    [Parameter(Mandatory=$false,
-        Position=9,
-        HelpMessage="What's the email address that'll send the email?")]
-    [string]$From,
-
-    [Parameter(Mandatory=$false,
-        Position=10)]
+        Position=9)]
     [switch]$SkipBackup
 )
 
@@ -146,6 +155,12 @@ BEGIN {
     $TEMP_BITWARDEN_RUN_FILE_PATH = "$TEMP_BITWARDEN_DIR/run.sh"
     # Example Temp Old Run File Path: /opt/bitwarden-2022-12-25-10-45/run.sh.old
     $OLD_BITWARDEN_RUN_FILE_PATH = "$TEMP_BITWARDEN_DIR/run.sh.old"
+
+    # We will use this splatter to send an email if '-sendEmail' was given
+    $EMAIL_PARAMS = @{}
+
+    # Email settings will be stored in this hash table
+    $EMAIL_SETTINGS = @{}
     #endregion
 
     #region Reset these used variables
@@ -164,6 +179,12 @@ BEGIN {
     $UPDATE_NEEDED = $null
     $DID_WE_UPDATE = $null
     $EMAIL_DATA = $null
+    $GLOBAL_ENV = $null
+    $SMTP_SERVER = $null
+    $SMTP_PORT = $null
+    $FROM = $null
+    $PASS = $null
+    $Creds = $null
     $BW_ITEMS = @($TEMP_BITWARDEN_DIR)
     #endregion
 
@@ -189,6 +210,8 @@ BEGIN {
     $exitcode_UpdateFailed = 27
     $exitcode_FailSendingUpdateEmail = 28
     $exitcode_CouldNotConfirmUpdate = 29
+    $exitcode_MissingGlobalEnv = 30
+    $exitcode_FailGatheringEmailSettings = 31
     #endregion
 
     #region functions
@@ -428,9 +451,9 @@ PROCESS {
         }
 
         # Start the Backup
-        if ($PSCmdlet.ParameterSetName -eq 'PasswordFile') {
+        if ($PSCmdlet.ParameterSetName -like '*PasswordFile*') {
             Start-Job -Name "CreateBackup" -ScriptBlock {pwsh -File $using:BITWARDEN_BACKUP_SCRIPT -PasswordFile $using:PasswordFile -FinalBackupLocation $using:FINAL_BACKUP_LOCATION -All -BackupName $using:BACKUP_FILE_NAME}
-        } elseif ($PSCmdlet.ParameterSetName -eq 'PasswordPhrase') {
+        } elseif ($PSCmdlet.ParameterSetName -like '*PasswordPhrase*') {
             Start-Job -Name "CreateBackup" -ScriptBlock {pwsh -File $using:BITWARDEN_BACKUP_SCRIPT -PasswordPhrase $using:PasswordPhrase -FinalBackupLocation $using:FINAL_BACKUP_LOCATION -All -BackupName $using:BACKUP_FILE_NAME}
 
         }
@@ -602,7 +625,37 @@ PROCESS {
     }
 
     # Send email of the update
-    if ($PSBoundParameters.ContainsKey('EmailAddresses') -and $PSBoundParameters.ContainsKey('From') -and $PSBoundParameters.ContainsKey('SMTPServer')) {
+    if ($PSCmdlet.ParameterSetName -like 'SendEmail*') {
+
+        # The location of the global environment variables. Verify it exists.
+        $GLOBAL_ENV = '/opt/bitwarden/bwdata/env/global.override.env'
+        if (-not (Test-Path -Path $GLOBAL_ENV)) {
+            Write-Log -EntryType Warning -Message "Main: Global Environment file $GLOBAL_ENV does not exist. Could not retrieve SMTP settings."
+            exit $exitcode_MissingGlobalEnv
+        }
+
+        try {
+            Write-Log "Main: Gathering Email Settings from global environment file $GLOBAL_ENV"
+            $EMAIL_SETTINGS = Get-ZHLBWEmailSettings -GlobalEnv $GLOBAL_ENV -ErrorAction Stop
+        } catch {
+            Write-Log -EntryType Warning -Message "Main: Failed gathering Email Settings from $GLOBAL_ENV due to error $_"
+            exit $exitcode_FailGatheringEmailSettings
+        }
+        
+        # Create the parameter splat
+        $EMAIL_PARAMS.add('EmailAddresses', $EmailAddresses)
+        $EMAIL_PARAMS.add('FROM', $EMAIL_SETTINGS['From'])
+        $EMAIL_PARAMS.add('SMTPServer', $EMAIL_SETTINGS['SMTPServer'])
+        $EMAIL_PARAMS.add('SMTPPort', $EMAIL_SETTINGS['SMTPPort'])
+        $EMAIL_PARAMS.add('Subject', "BitWarden Update Results")
+        $EMAIL_PARAMS.add('UseSSL', $EMAIL_SETTINGS['UseSSL'])
+
+        # If a password was given, create the credentials variable
+        if ($null -ne $PASS) {
+            $EMAIL_PARAMS.add('Creds', $EMAIL_SETTINGS['Creds'])
+        }
+    
+        # Create the Email Data that will reside within the body
         $EMAIL_DATA = "" | Select-Object CURRENT_CORE_ID, LATEST_CORE_ID, CURRENT_WEB_ID, LATEST_WEB_ID, CURRENT_KEYCONNECTOR_ID, LATEST_KEYCONNECTOR_ID, BACKUP_FILE
         $EMAIL_DATA.CURRENT_CORE_ID = $CURRENT_CORE_ID
         $EMAIL_DATA.LATEST_CORE_ID = $LATEST_CORE_ID
@@ -613,10 +666,13 @@ PROCESS {
             $EMAIL_DATA.LATEST_KEYCONNECTOR_ID = $LATEST_KEYCONNECTOR_ID
         }
         $EMAIL_DATA.BACKUP_FILE = $ENCRYPTED_BACKUP_FILE_NAME
+        $EMAIL_PARAMS.add('Data', $EMAIL_DATA)
+        $EMAIL_PARAMS.add('ErrorAction', 'Stop')
 
+        # Send the email
         try {
             Write-Log "Main: Attempting to send update report email..."
-            Send-ZHLBWUpdateEmail -EmailAddresses $EmailAddresses -From $From -SmtpServer $SMTPServer -Subject "BitWarden Update Results" -Data $EMAIL_DATA -ErrorAction Stop
+            Send-ZHLBWUpdateEmail @EMAIL_PARAMS
         } catch {
             Write-Log -EntryType Warning -Message "Main: Failed sending email report due to $_"
             Remove-ZHLBWItems -Items $BW_ITEMS

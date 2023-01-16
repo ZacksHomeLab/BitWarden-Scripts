@@ -1254,30 +1254,67 @@ function Send-ZHLBWEmail {
 #>
     [cmdletbinding()]
     param (
-        [parameter(Mandatory=$false,
+        [parameter(Mandatory,
             Position=0)]
         [string[]]$EmailAddresses,
 
-        [parameter(Mandatory=$false,
+        [parameter(Mandatory,
             Position=1)]
-        [string]$From = "",
+        [string]$From,
 
-        [parameter(Mandatory=$false,
+        [parameter(Mandatory,
             Position=2)]
-        [string]$SMTPServer = "",
+        [string]$SMTPServer,
 
-        [parameter(Mandatory=$false,
+        [parameter(Mandatory,
             Position=3)]
-        [string]$Subject = "",
+        [string]$SMTPPort,
 
         [parameter(Mandatory,
             Position=4)]
-        [System.Object[]]$Data
+        [string]$Subject,
+
+        [parameter(Mandatory,
+            Position=5)]
+        [string]$body,
+
+        [parameter(Mandatory=$false,
+            Position=6,
+            ParameterSetName='Creds')]
+        [System.Management.Automation.PSCredential]$Creds,
+
+        [parameter(Mandatory,
+            Position=7)]
+            [ValidateSet("False", "True")]
+        [string]$UseSSL
     )
+
+    begin {
+        $SMTPPort = $SMTPPort -as [int]
+
+        # Build splat of parameters
+        $Params = @{
+            To = $EmailAddresses
+            From = $From
+            Subject = $Subject
+            $Body = $Body
+            BodyAsHtml = $true
+            SMTPServer = $SMTPServer
+            Port = $SMTPPort
+        }
+        if ($PSCmdlet.ParameterSetName -eq 'Creds') {
+            $Params.add('Credential', $Creds)
+        }
+        if ($UseSSL -eq 'True') {
+            $Params.add('UseSSL', $true)
+        }
+        $Params.add('ErrorAction', 'Stop')
+    }
     process {
         Write-Verbose "Send-ZHLBWEmail: Attempting to send update email..."
         try {
-            Send-MailMessage -To $EmailAddresses -From $From -Subject $Subject -BodyAsHtml -Body $Body -SmtpServer $SMTPServer
+            [System.Net.ServicePointManager]::SecurityProtocol = 'TLS12'
+            Send-MailMessage @Params
         } catch {
             Throw "Send-ZHLBWEmail: Failed sending email due to $_"
         }
@@ -1312,29 +1349,46 @@ function Send-ZHLBWUpdateEmail {
 #>
     [cmdletbinding()]
     param (
-        [parameter(Mandatory=$false,
+        [parameter(Mandatory,
             Position=0)]
         [string[]]$EmailAddresses,
 
-        [parameter(Mandatory=$false,
+        [parameter(Mandatory,
             Position=1)]
         [string]$From,
 
-        [parameter(Mandatory=$false,
+        [parameter(Mandatory,
             Position=2)]
         [string]$SMTPServer,
 
-        [parameter(Mandatory=$false,
+        [parameter(Mandatory,
             Position=3)]
-        [string]$Subject,
+        [string]$SMTPPort,
 
         [parameter(Mandatory,
             Position=4)]
-        [System.Object[]]$Data
+        [string]$Subject,
+
+        [parameter(Mandatory,
+            Position=5)]
+        [System.Object[]]$Data,
+
+        [parameter(Mandatory=$false,
+            Position=6,
+            ParameterSetName='Creds')]
+        [System.Management.Automation.PSCredential]$Creds,
+
+        [parameter(Mandatory,
+            Position=7)]
+            [ValidateSet("False", "True")]
+        [string]$UseSSL
     )
     
     BEGIN {
         $Body = $null  
+
+        # Set SMTPPort to an int
+        $SMTPPort = $SMTPPort -as [int]
 
         $CURRENT_CORE_ID = $Data.CURRENT_CORE_ID
         $LATEST_CORE_ID = $Data.LATEST_CORE_ID
@@ -1347,6 +1401,23 @@ function Send-ZHLBWUpdateEmail {
             $LATEST_KEYCONNECTOR_ID = $Data.LATEST_KEYCONNECTOR_ID
         }
         $BACKUP_FILE = $Data.BACKUP_FILE
+
+        # Build splat of parameters
+        $Params = @{
+            To = $EmailAddresses
+            From = $From
+            Subject = $Subject
+            BodyAsHtml = $true
+            SMTPServer = $SMTPServer
+            Port = $SMTPPort
+        }
+        if ($PSCmdlet.ParameterSetName -eq 'Creds') {
+            $Params.add('Credential', $Creds)
+        }
+        if ($UseSSL -eq 'True') {
+            $Params.add('UseSSL', $true)
+        }
+        $Params.add('ErrorAction', 'Stop')
     }
 
     PROCESS {
@@ -1457,9 +1528,14 @@ function Send-ZHLBWUpdateEmail {
         </ul>
 "@
         }
+
+        # Add body to the parameter splat
+        $Params.add('body', $Body)
+
         try {
+            [System.Net.ServicePointManager]::SecurityProtocol = 'TLS12'
             Write-Verbose "Send-ZHLBWUpdateEmail: Attempting to send update email..."
-            Send-MailMessage -To $EmailAddresses -From $From -Subject $Subject -BodyAsHtml -Body $Body -SmtpServer $SMTPServer -ErrorAction Stop
+            Send-MailMessage @Params
         } catch {
             Throw "Send-ZHLBWUpdateEmail: Failed sending email due to $_"
         }
@@ -1520,9 +1596,46 @@ function Test-ZHLBWSSLFiles {
         return $SUCCESS
     }
 }
+
+function Get-ZHLBWEmailSettings {
+    [cmdletbinding()]
+    param (
+        [parameter(Mandatory)]
+        [ValidateScript({Test-Path -path $_})]
+        [string]$GlobalEnv
+    )
+
+    begin {
+        $EMAIL_DATA = @{}
+        # Retrieve the SMTP Server, Port, Username, and Password for the email account.
+        $SMTP_SERVER = (select-string -Path $GlobalEnv -Pattern "globalSettings__mail__smtp__host").toString().split('=')[-1]
+        $EMAIL_DATA.add('SMTPServer', $SMTP_SERVER)
+
+        $SMTP_PORT = (select-string -Path $GlobalEnv -Pattern "globalSettings__mail__smtp__port").toString().split('=')[-1]
+        $EMAIL_DATA.add('SMTPPort', $SMTP_PORT)
+
+        $FROM = (select-string -Path $GlobalEnv -Pattern "globalSettings__mail__smtp__username").toString().split('=')[-1]
+        $EMAIL_DATA.add('From', $FROM)
+
+        $PASS = ((select-string -Path $GlobalEnv -Pattern "globalSettings__mail__smtp__password").toString().split('=')[-1]) | ConvertTo-SecureString -AsPlainText -Force -ErrorAction SilentlyContinue
+        $EMAIL_DATA.add('Pass', $PASS)
+
+        $UseSSL = (select-string -Path $GlobalEnv -Pattern "globalSettings__mail__smtp__ssl").toString().split('=')[-1]
+        $EMAIL_DATA.add('UseSSL', $UseSSL)
+
+        if ($null -ne $PASS) {
+            $Creds = New-Object System.Management.Automation.PSCredential ($FROM, $PASS)
+            $EMAIL_DATA.add('Creds', $Creds)
+        }
+    }
+    
+    end {
+        return $EMAIL_DATA
+    }
+}
 #endregion
 
 Export-ModuleMember -Function New-ZHLBWBackupName, New-ZHLBWBackupDecryptionName, New-ZHLBWBackupExtractionName, Backup-ZHLBWBitWarden, Remove-ZHLBWBackups, `
 Lock-ZHLBWBackup, Unlock-ZHLBWBackup, Expand-ZHLBWBackup, Restore-ZHLBWBackup, Stop-ZHLBWBitwarden, Start-ZHLBWBitwarden, Restart-ZHLBWBitWarden, Update-ZHLBWBitWardenScripts, `
 Install-ZHLBWBitWardenScripts, Update-ZHLBWScriptPermissions, Get-ZHLBWWebID, Get-ZHLBWCoreID, Get-ZHLBWKeyConnectorStatus, Get-ZHLBWKeyConnectorID, Get-ZHLBWRunScriptURL, `
-Get-ZHLBWScriptURL, Confirm-ZHLBWUpdate, Remove-ZHLBWItems, Send-ZHLBWEmail, Send-ZHLBWUpdateEmail, Get-ZHLBWExtractedItems, Test-ZHLBWSSLFiles
+Get-ZHLBWScriptURL, Confirm-ZHLBWUpdate, Remove-ZHLBWItems, Send-ZHLBWEmail, Send-ZHLBWUpdateEmail, Get-ZHLBWExtractedItems, Test-ZHLBWSSLFiles, Get-ZHLBWEmailSettings

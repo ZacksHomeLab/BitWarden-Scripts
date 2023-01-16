@@ -24,14 +24,11 @@
 .PARAMETER BackupName
     If you wish to overwrite the default backup name, use this parameter to do so. You must end the filename with a .tar file extension (e.g., backup.tar)
 
+.PARAMETER SendEmail
+    Toggle this switch if you would like the script to send an email based off of your settings in the Global Environments file.
+
 .PARAMETER EmailAddresses
-    The email address(es) in which notifications will be sent out to.
-
-.PARAMETER SMTPServer
-    The SMTP Server the script will use to send emails from.
-
-.PARAMETER From
-    The Email Address that will be sending said emails.
+    Input the email addresses that should receive the email from this script.
 
 .PARAMETER LogFile
     The location where the log file will reside.
@@ -42,9 +39,10 @@
     Perform a full BitWarden Backup with the default retention days of 31 and store the backups at location /backups
 
 .EXAMPLE
-    ./Backup-Bitwarden.ps1 -PasswordFile './password_file' -FinalBackupLocation '/backups' -All -EmailAddresses 'zack@zackshomelab.com'
+    ./Backup-Bitwarden.ps1 -PasswordFile './password_file' -FinalBackupLocation '/backups' -All -SendEmail -EmailAddresses 'zack@zackshomelab.com'
     
-    Perform a full BitWarden Backup with a retention of 5 days (this will remove backups older than 5 days) and store the backup at /backups'
+    Perform a full BitWarden Backup with a retention of 5 days (this will remove backups older than 5 days) and store the backup at /backups' and gather the Email Settings from the 
+    global environment file to send an email to zack@zackshomelab.com
 
 .EXAMPLE
     ./Backup-Bitwarden.ps1 -PasswordFile '/opt/bitwarden/password_file' -FinalBackupLocation '/backups' -Incremental -days 10 -LogFile '/root/bitwarden_backup.log'
@@ -67,6 +65,14 @@ param (
         Position=0,
         ValueFromPipeline,
         ParameterSetName='AllPasswordFile')]
+    [parameter(Mandatory,
+        Position=0,
+        ValueFromPipeline,
+        ParameterSetName='IncrementPasswordFileSendEmail')]
+    [parameter(Mandatory,
+        Position=0,
+        ValueFromPipeline,
+        ParameterSetName='AllPasswordFileSendEmail')]
         [ValidateScript({Test-Path -Path $_})]
     [string]$PasswordFile,
 
@@ -78,6 +84,14 @@ param (
         Position=0,
         ValueFromPipeline,
         ParameterSetName='AllPasswordPhrase')]
+    [parameter(Mandatory,
+        Position=0,
+        ValueFromPipeline,
+        ParameterSetName='IncrementPasswordPhraseSendEmail')]
+    [parameter(Mandatory,
+        Position=0,
+        ValueFromPipeline,
+        ParameterSetName='AllPasswordPhraseSendEmail')]
         [ValidateNotNullOrEmpty()]
     [System.Security.SecureString]$PasswordPhrase,
 
@@ -92,6 +106,9 @@ param (
     [parameter(Mandatory,
         Position=2,
         ParameterSetName='IncrementPasswordPhrase')]
+    [parameter(Mandatory,
+        Position=2,
+        ParameterSetName='IncrementPasswordPhraseSendEmail')]
     [switch]$Incremental,
 
     [parameter(Mandatory,
@@ -100,6 +117,9 @@ param (
     [parameter(Mandatory,
         Position=2,
         ParameterSetName='AllPasswordPhrase')]
+    [parameter(Mandatory,
+        Position=2,
+        ParameterSetName='AllPasswordFileSendEmail')]
     [switch]$All,
 
     [parameter(Mandatory=$false,
@@ -118,19 +138,37 @@ param (
         Position=5)]
     [string]$LogFile = './backup-bitwarden.log',
 
-    [Parameter(Mandatory=$false,
-        Position=6)]
-    [string[]]$EmailAddresses,
+    [parameter(Mandatory,
+        Position=6,
+        ParameterSetName='IncrementPasswordFileSendEmail')]
+    [parameter(Mandatory,
+        Position=6,
+        ParameterSetName='AllPasswordFileSendEmail')]
+    [parameter(Mandatory,
+        Position=6,
+        ParameterSetName='IncrementPasswordPhraseSendEmail')]
+    [parameter(Mandatory,
+        Position=6,
+        ParameterSetName='AllPasswordPhraseSendEmail')]
+    [switch]$SendEmail,
 
-    [Parameter(Mandatory=$false,
+    [parameter(Mandatory,
         Position=7,
-        helpMessage="What's your SMTP Server's address? (e.g., contoso-com.mail.protection.outlook.com)")]
-    [string]$SMTPServer,
-
-    [Parameter(Mandatory=$false,
-        Position=8,
-        HelpMessage="What's the email address that'll send the email?")]
-    [string]$From
+        ParameterSetName='IncrementPasswordFileSendEmail',
+        helpMessage="What Email Addresses should receive the update report? (Must also add '-SendEmail' switch to enable this)")]
+    [parameter(Mandatory,
+        Position=7,
+        ParameterSetName='AllPasswordFileSendEmail',
+        helpMessage="What Email Addresses should receive the update report? (Must also add '-SendEmail' switch to enable this)")]
+    [parameter(Mandatory,
+        Position=7,
+        ParameterSetName='IncrementPasswordPhraseSendEmail',
+        helpMessage="What Email Addresses should receive the update report? (Must also add '-SendEmail' switch to enable this)")]
+    [parameter(Mandatory,
+        Position=7,
+        ParameterSetName='AllPasswordPhraseSendEmail',
+        helpMessage="What Email Addresses should receive the update report? (Must also add '-SendEmail' switch to enable this)")]
+    [string[]]$EmailAddresses,
 )
 
 BEGIN {
@@ -152,13 +190,11 @@ BEGIN {
     # Path of the Vault log (this is used to determine if we need to make an incremental backup)
     $VAULT_LOG = "/opt/bitwarden/bwdata/mssql/data/vault_log.ldf"
 
-    # Send Emails if this is true
-    if ($PSBoundParameters.ContainsKey('EmailAddresses') -and $PSBoundParameters.ContainsKey('From') -and $PSBoundParameters.ContainsKey('SMTPServer')) {
-        $CAN_SEND_EMAIL = $true
-    } else {
-        $CAN_SEND_EMAIL = $false
-    }
-    
+    # We will use this splatter to send an email if '-sendEmail' was given
+    $EMAIL_PARAMS = @{}
+
+    # Email settings will be stored in this hash table
+    $EMAIL_SETTINGS = @{}
     #endregion
 
 
@@ -211,6 +247,8 @@ BEGIN {
     $exitcode_FailMovingEncryptBackup = 13
     $exitcode_FailFindingBackupAfterMove = 14
     $exitcode_FailRemoveOldBackups = 15
+    $exitcode_MissingGlobalEnv = 16
+    $exitcode_FailGatheringEmailSettings = 17
     #endregion
 }
 
@@ -254,6 +292,39 @@ PROCESS {
 
     # Add the items or directories to be removed by the script if we encounter an error or end said script
     $CLEANUP_ITEMS = @($ENCRYPTED_BACKUP_NAME, $BACKUP_NAME)
+
+    #region Gather Email Settings
+    if ($PSCmdlet.ParameterSetName -like '*SendEmail*') {
+        # The location of the global environment variables. Verify it exists.
+        $GLOBAL_ENV = '/opt/bitwarden/bwdata/env/global.override.env'
+        if (-not (Test-Path -Path $GLOBAL_ENV)) {
+            Write-Log -EntryType Warning -Message "Main: Global Environment file $GLOBAL_ENV does not exist. Could not retrieve SMTP settings."
+            exit $exitcode_MissingGlobalEnv
+        }
+
+        try {
+            Write-Log "Main: Gathering Email Settings from global environment file $GLOBAL_ENV"
+            $EMAIL_SETTINGS = Get-ZHLBWEmailSettings -GlobalEnv $GLOBAL_ENV -ErrorAction Stop
+        } catch {
+            Write-Log -EntryType Warning -Message "Main: Failed gathering Email Settings from $GLOBAL_ENV due to error $_"
+            exit $exitcode_FailGatheringEmailSettings
+        }
+        
+        # Create the parameter splat
+        $EMAIL_PARAMS.add('EmailAddresses', $EmailAddresses)
+        $EMAIL_PARAMS.add('FROM', $EMAIL_SETTINGS['From'])
+        $EMAIL_PARAMS.add('SMTPServer', $EMAIL_SETTINGS['SMTPServer'])
+        $EMAIL_PARAMS.add('SMTPPort', $EMAIL_SETTINGS['SMTPPort'])
+        $EMAIL_PARAMS.add('UseSSL', $EMAIL_SETTINGS['UseSSL'])
+
+        # If a password was given, create the credentials variable
+        if ($null -ne $PASS) {
+            $EMAIL_PARAMS.add('Creds', $EMAIL_SETTINGS['Creds'])
+        }
+        $EMAIL_PARAMS.add('ErrorAction', 'Stop')
+    }
+    #endregion
+
     #endregion
 
 
@@ -297,8 +368,8 @@ PROCESS {
     } catch {
         $Message = $_
         Write-Log -EntryType Warning -Message "Main: Failed to encrypt backup $BACKUP_NAME because of error $Message"
-        if ($CAN_SEND_EMAIL) {
-            Send-ZHLBWEmail -EmailAddresses $EmailAddresses -From $From -SmtpServer $SMTPServer -Subject "FAILURE: BitWarden Backup" -Body "Encryption was successful but failed to delete unencrypted backup because of error: $Message" -ErrorAction SilentlyContinue
+        if ($SEND_EMAIL) {
+            Send-ZHLBWEmail @EMAIL_PARAMS -Subject "FAILURE: BitWarden Backup" -Body "Encryption was successful but failed to delete unencrypted backup because of error: $Message"
         }
         Remove-ZHLBWItems -Items $CLEANUP_ITEMS
         exit $exitcode_FailEncryptingBackup
@@ -317,8 +388,8 @@ PROCESS {
     } catch {
         $Message = $_
         Write-Log -EntryType Warning -Message "Main: Failed to move encrypted backup $ENCRYPTED_BACKUP_NAME due to error $Message"
-        if ($CAN_SEND_EMAIL) {
-            Send-ZHLBWEmail -EmailAddresses $EmailAddresses -From $From -SMTPServer $SMTPServer -Subject "FAILURE: BitWarden Backup" -Body "Failed to move encrypted backup $ENCRYPTED_BACKUP_NAME because of error $Messag" -ErrorAction SilentlyContinue
+        if ($SEND_EMAIL) {
+            Send-ZHLBWEmail @EMAIL_PARAMS -Subject "FAILURE: BitWarden Backup" -Body "Failed to move encrypted backup $ENCRYPTED_BACKUP_NAME because of error $Message"
         }
         exit $exitcode_FailMovingEncryptBackup
     }
@@ -326,15 +397,15 @@ PROCESS {
     # Verify the backup is at its final location
     if (-not (Test-Path -Path $ENCRYPTED_BACKUP_NAME)) {
         Write-Log -EntryType Warning -Message "Main: Could not find created backup $ENCRYPTED_BACKUP_NAME."
-        if ($CAN_SEND_EMAIL) {
-            Send-ZHLBWEmail -EmailAddresses $EmailAddresses -From $From -SmtpServer $SMTPServer -Subject "FAILURE: BitWarden Backup" -Body "Successfully created backup but could not find it after moving to $ENCRYPTED_BACKUP_NAME"
+        if ($SEND_EMAIL) {
+            Send-ZHLBWEmail @EMAIL_PARAMS -Subject "FAILURE: BitWarden Backup" -Body "Successfully created backup but could not find it after moving to $ENCRYPTED_BACKUP_NAME"
         }
         exit $exitcode_FailFindingBackupAfterMove
     }
 
     Write-Log "`nMain: Successfully created backup $ENCRYPTED_BACKUP_NAME. Sending success email (if Send-ZHLBWEmail was configured)."
-    if ($CAN_SEND_EMAIL) {
-        Send-ZHLBWEmail -EmailAddresses $EmailAddresses -From $From -SmtpServer $SMTPServer -Subject "SUCCESS: BitWarden Backup" -Body "Successfully created backup $ENCRYPTED_BACKUP_NAME."
+    if ($SEND_EMAIL) {
+        Send-ZHLBWEmail @EMAIL_PARAMS -Subject "SUCCESS: BitWarden Backup" -Body "Successfully created backup $ENCRYPTED_BACKUP_NAME."
     }
     #endregion
 

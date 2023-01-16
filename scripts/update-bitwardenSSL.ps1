@@ -1,22 +1,41 @@
 <#
 .Synopsis
     This script will renew BitWarden's Let's Encrypt certificate.
+
 .DESCRIPTION
     This script will renew BitWarden's Let's Encrypt certificate.
+
 .PARAMETER ConfigFile
     The path of the docker configuration file for BitWarden (default is: '/opt/bitwarden/bwdata/config.yml')
+
 .PARAMETER URL
     The URL of your BitWarden instance. If one isn't provided, the script will retrieve it from ConfigFile.
+
 .PARAMETER BitWardenScript
     The path of BitWarden's service script (default is: '/opt/bitwarden/bitwarden.sh').
+
 .PARAMETER ServiceAccount
     The name of your service account for the BitWarden service (default is: bitwarden).
+
+.PARAMETER SendEmail
+    Toggle this switch if you would like the script to send an email based off of your settings in the Global Environments file.
+
+.PARAMETER EmailAddresses
+    Input the email addresses that should receive the email from this script.
+
 .PARAMETER LogFile
     The path of the log file to store the output of this script (default is: './Update-BitWardenSSL.log').
+
 .EXAMPLE
     ./update-bitwardenSSL.ps1
 
     The above will utilize the default values to renew BitWarden's SSL certificate with Let's Encrypt.
+
+.EXAMPLE
+    ./update-bitwardenSSL.ps1 -SendEmail -EmailAddresses 'zack@zackshomelab.com'
+
+    The above will send a notification if a SSL Renewal occurred.
+    
 .NOTES
     Author - Zack
 .LINK
@@ -49,8 +68,19 @@ param (
         [ValidateNotNullOrEmpty()]
     [string]$ServiceAccount = 'bitwarden',
 
+    [parameter(Mandatory,
+        Position=5,
+        ParameterSetName='SendEmail')]
+    [switch]$SendEmail,
+
+    [parameter(Mandatory,
+        Position=6,
+        ParameterSetName='SendEmail',
+        helpMessage="What Email Addresses should receive the update report? (Must also add '-SendEmail' switch to enable this)")]
+    [string[]]$EmailAddresses,
+
     [Parameter(Mandatory=$false, 
-        Position=5)]
+        Position=7)]
     [string]$LogFile = "./Update-BitWardenSSL.log"
 )
 
@@ -89,12 +119,23 @@ begin {
     $ITEMS_TO_VERIFY = @($LE_PRIVATE_KEY, $LE_FULLCHAIN, $LE_CA_FILE, $BITWARDEN_SSL_PRIVATE_KEY, $BITWARDEN_SSL_FULLCHAIN, $BITWARDEN_SSL_CA_FILE)
     $ITEMS_MISSING = @()
 
+    # We will use this splatter to send an email if '-sendEmail' was given
+    $EMAIL_PARAMS = @{}
+
+    # Email settings will be stored in this hash table
+    $EMAIL_SETTINGS = @{}
 
     # Reset these variables
     $SUCCESS = $null
     $CERTBOT = $null
     $CHOWN = $null
     $item = $null
+    $FROM = $null
+    $SMTP_PORT = $null
+    $SMTP_SERVER = $null
+    $Creds = $null
+    $UseSSL = $null
+    $PASS = $null
     #endregion
 
 
@@ -115,6 +156,9 @@ begin {
     $exitcode_FailReplaceCA = 19
     $exitcode_FailUpdatingOwnership = 20
     $exitcode_FailRestartingBitWarden = 21
+    $exitcode_MissingGlobalEnv = 22
+    $exitcode_FailSendingEmail = 23
+    $exitcode_FailGatheringEmailSettings = 24
     #endregion
 
     #region Functions
@@ -282,6 +326,48 @@ process {
     } catch {
         Write-Log -EntryType Warning -Message "Main: Failed restarting BitWarden due to error $_"
         exit $exitcode_FailRestartingBitWarden
+    }
+
+    #endregion
+
+
+    #region Send Email
+    if ($PSCmdlet.ParameterSetName -eq 'SendEmail') {
+        # The location of the global environment variables. Verify it exists.
+        $GLOBAL_ENV = '/opt/bitwarden/bwdata/env/global.override.env'
+        if (-not (Test-Path -Path $GLOBAL_ENV)) {
+            Write-Log -EntryType Warning -Message "Main: Global Environment file $GLOBAL_ENV does not exist. Could not retrieve SMTP settings."
+            exit $exitcode_MissingGlobalEnv
+        }
+        try {
+            Write-Log "Main: Gathering Email Settings from global environment file $GLOBAL_ENV"
+            $EMAIL_SETTINGS = Get-ZHLBWEmailSettings -GlobalEnv $GLOBAL_ENV -ErrorAction Stop
+        } catch {
+            Write-Log -EntryType Warning -Message "Main: Failed gathering Email Settings from $GLOBAL_ENV due to error $_"
+            exit $exitcode_FailGatheringEmailSettings
+        }
+        
+        # Create the parameter splat
+        $EMAIL_PARAMS.add('EmailAddresses', $EmailAddresses)
+        $EMAIL_PARAMS.add('FROM', $EMAIL_SETTINGS['From'])
+        $EMAIL_PARAMS.add('SMTPServer', $EMAIL_SETTINGS['SMTPServer'])
+        $EMAIL_PARAMS.add('SMTPPort', $EMAIL_SETTINGS['SMTPPort'])
+        $EMAIL_PARAMS.add('Subject', "BitWarden: SSL Certificate Renewed!")
+        $EMAIL_PARAMS.add('Body', "The Let's Encrypt certificate has renewed.")
+        $EMAIL_PARAMS.add('UseSSL', $EMAIL_SETTINGS['UseSSL'])
+
+        # If a password was given, create the credentials variable
+        if ($null -ne $PASS) {
+            $EMAIL_PARAMS.add('Creds', $EMAIL_SETTINGS['Creds'])
+        }
+        $EMAIL_PARAMS.add('ErrorAction', 'Stop')
+
+        try {
+            Send-ZHLBWEmail @EMAIL_PARAMS
+        } catch {
+            Write-Log -EntryType Warning -Message "Main: Failed sending email due to Error $_"
+            exit $exitcode_FailSendingEmail
+        }
     }
     #endregion
 }
