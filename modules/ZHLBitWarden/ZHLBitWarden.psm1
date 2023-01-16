@@ -525,7 +525,7 @@ function Expand-ZHLBWBackup {
         tar --extract -f $ArchiveFile --directory $EXTRACT_DIRECTORY
 
         # Verify if we have any items extracted
-        if (-not $?) {
+        if ($LastExitCode -ne 0) {
             Write-Error "Expand-ZHLBWBackup: Doesn't appear the extraction succeeded."
             break
         }
