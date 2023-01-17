@@ -316,6 +316,10 @@ function Lock-ZHLBWBackup {
     )
 
     begin {
+        if ($PSCmdlet.ParameterSetName -eq 'PasswordFile') {
+            Write-Verbose "Lock-ZHLBWBackup: Retrieving Password from $PasswordFile and storing it as secure string."
+            $Phrase = Get-Content -Path $PasswordFile | ConvertTo-SecureString -AsPlainText
+        }
         # Encrypted Backup File Location
         if ($BackupFile -notlike '*.gpg') {
             $ENCRYPTED_BACKUP_NAME = "$($BackupFile).gpg"
@@ -328,7 +332,7 @@ function Lock-ZHLBWBackup {
         # Encrypt the backup with a Password File or Password Phrase
         if ($PSCmdlet.ParameterSetName -eq 'PasswordFile') {
             Write-Verbose "Lock-ZHLBWBackup: Attempting to encrypt backup $BackupFile with Password File $PasswordFile..."
-            Get-Content -Path $PasswordFile | gpg --batch -c --passphrase-fd 0 $BackupFile
+            ConvertFrom-SecureString -SecureString $Phrase -AsPlainText | gpg --batch -c --passphrase-fd 0 $BackupFile
         } elseif ($PSCmdlet.ParameterSetName -eq 'PasswordPhrase') {
             Write-Verbose "Lock-ZHLBWBackup: Attempting to encrypt backup $BackupFile with a provided Password phrase..."
             ConvertFrom-SecureString -SecureString $PasswordPhrase -AsPlainText | gpg --batch -c --passphrase-fd 0 $BackupFile
@@ -407,6 +411,11 @@ function Unlock-ZHLBWBackup {
         } else {
             $DECRYPT_LOCATION = $DecryptLocation
         }
+
+        if ($PSCmdlet.ParameterSetName -eq 'PasswordFile') {
+            Write-Verbose "Unlock-ZHLBWBackup: Retrieving Password from $PasswordFile and storing it as secure string."
+            $Phrase = Get-Content -Path $PasswordFile | ConvertTo-SecureString -AsPlainText
+        }
     }
 
     process {
@@ -416,10 +425,10 @@ function Unlock-ZHLBWBackup {
         # Decrypt the backup with provided password file or passphrase
         if ($PSCmdlet.ParameterSetName -eq "PasswordFile") {
             Write-Verbose "Unlock-ZHLBWBackup: Attempting to decrypt backup file $BackupFile with Password file $PasswordFile."
-            gpg --batch --passphrase-file $PasswordFile --output $DECRYPT_LOCATION --decrypt $BackupFile
+            gpg --batch --passphrase (ConvertFrom-SecureString -SecureSTring $Phrase -AsPlainText) --output $DECRYPT_LOCATION --decrypt $BackupFile
         } elseif ($PSCmdlet.ParameterSetName -eq "Passwordphrase") {
             Write-Verbose "Unlock-ZHLBWBackup: Attempting to decrypt backup file $BackupFile with a given passphrase."
-            gpg --batch --passphrase $Passphrase --output $DECRYPT_LOCATION --decrypt $BackupFile
+            gpg --batch --passphrase (ConvertFrom-SecureString -SecureSTring $Passphrase -AsPlainText) --output $DECRYPT_LOCATION --decrypt $BackupFile
         }
 
         # Verify if the Decrypted backup was created
