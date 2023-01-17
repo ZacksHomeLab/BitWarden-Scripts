@@ -1,8 +1,8 @@
 <#
 .Synopsis
-    This script performs updates the BitWarden application.
+    This script will upgrade the BitWarden application.
 .DESCRIPTION
-    This script automatically performs a backup and then proceeds with updating the bitwarden application.
+    This script automatically performs a backup and proceeds with updating the BitWarden application.
 .PARAMETER PasswordFile
     The password file that holds the passphrase that will be used to encrypt backups.
 .PARAMETER PasswordPhrase
@@ -271,18 +271,21 @@ PROCESS {
     # Verify if we can import the ZHLBitWarden Module:
     if (-not (Get-Module -Name ZHLBitWarden -ErrorAction SilentlyContinue)) {
         try {
-            if (Test-Path -Path "$($Home)/.local/share/powershell/Modules/ZHLBitWarden.psm1") {
-                Import-Module -Name "$($Home)/.local/share/powershell/Modules/ZHLBitWarden.psm1"
+            if (Test-Path -Path "./ZHLBitWarden.psm1") {
+                Import-Module -Name "./ZHLBitWarden.psm1" -ErrorAction Stop
+            } elseif (Test-Path -Path "$($Home)/.local/share/powershell/Modules/ZHLBitWarden.psm1") {
+                Import-Module -Name "$($Home)/.local/share/powershell/Modules/ZHLBitWarden.psm1" -ErrorAction Stop
             } elseif (Test-Path -Path "/usr/local/share/powershell/Modules/ZHLBitWarden.psm1") {
                 Import-Module -Name "/usr/local/share/powershell/Modules/ZHLBitWarden.psm1" -ErrorAction Stop
             }
             
         } catch {
             Write-Log -EntryType Warning -Message "Main: Error importing PowerShell Module ZHLBitWarden."
-            Write-Log -EntryType Warning -Message "Main: Verify the module exists in '$($Home)/.local/share/powershell/Modules/ OR /usr/local/share/powershell/Modules/'"
+            Write-Log -EntryType Warning -Message "Main: Verify the module exists in the current directory of this script, '$($Home)/.local/share/powershell/Modules/', or '/usr/local/share/powershell/Modules/'"
             exit $exitcode_MissingZHLBitWardenModule
         }
     }
+    
     # Verify Docker is installed
     if (-not (Get-Command 'docker' -ErrorAction SilentlyContinue)) {
         Write-Log -EntryType Error -Message "Main: Missing command Docker, is it installed?"
