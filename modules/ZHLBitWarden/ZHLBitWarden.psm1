@@ -1307,6 +1307,8 @@ function Send-ZHLBWEmail {
         }
         if ($UseSSL -eq 'True') {
             $Params.add('UseSSL', $true)
+        } else {
+            $Params.add('UseSSL', $false)
         }
         $Params.add('ErrorAction', 'Stop')
     }
@@ -1415,6 +1417,8 @@ function Send-ZHLBWUpdateEmail {
         }
         if ($UseSSL -eq 'True') {
             $Params.add('UseSSL', $true)
+        } else {
+            $Params.add('UseSSL', $false)
         }
     }
 
