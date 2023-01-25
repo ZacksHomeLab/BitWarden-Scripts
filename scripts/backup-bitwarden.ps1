@@ -248,7 +248,7 @@ BEGIN {
 
     #region Exit Codes
     $exitcode_NoChangesInPastHour = 0
-    $exitcodde_NotRoot = 9
+    $exitcode_NotRoot = 9
     $exitcode_MissingZHLBitWardenModule = 10
     $exitcode_FailCreatingBackup = 11
     $exitcode_FailEncryptingBackup = 12
