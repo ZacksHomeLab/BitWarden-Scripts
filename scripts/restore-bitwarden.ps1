@@ -140,8 +140,6 @@ begin {
     $exitcode_MissingBitWardenScript = 12
     $exitcode_FailDecryptingBackup = 13
     $exitcode_FailExtractingBackup = 14
-    $exitcode_FailFindingRunScriptAfterExtraction = 15
-    $exitcode_FailReplacingNewRunWithOldRun = 16
     $exitcode_FailStoppingBitWarden = 17
     $exitcode_ExtractDirectoryEmpty = 18
     $exitcode_FailStartingBitWarden = 19
