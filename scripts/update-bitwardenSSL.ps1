@@ -117,7 +117,6 @@ begin {
 
     # This array will be used to validate if the below files actually exist. If they don't, the script will NOT run.
     $ITEMS_TO_VERIFY = @($LE_PRIVATE_KEY, $LE_FULLCHAIN, $LE_CA_FILE, $BITWARDEN_SSL_PRIVATE_KEY, $BITWARDEN_SSL_FULLCHAIN, $BITWARDEN_SSL_CA_FILE)
-    $ITEMS_MISSING = @()
 
     # We will use this splatter to send an email if '-sendEmail' was given
     $EMAIL_PARAMS = @{}
@@ -129,12 +128,6 @@ begin {
     $SUCCESS = $null
     $CERTBOT = $null
     $CHOWN = $null
-    $item = $null
-    $FROM = $null
-    $SMTP_PORT = $null
-    $SMTP_SERVER = $null
-    $Creds = $null
-    $UseSSL = $null
     $PASS = $null
     #endregion
 
@@ -142,10 +135,8 @@ begin {
 
     #region Exit Codse
     $exitcode_DidNotRenew = 1
-    $exitcode_FoundSSLFiles = 2
 
     $exitcode_NotRoot = 10
-    $exitcode_MissingFiles = 11
     $exitcode_MissingCertbot = 12
     $exitcode_MissingChown = 13
     $exitcode_FailRunningCertbot = 14

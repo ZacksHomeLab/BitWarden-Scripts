@@ -180,11 +180,7 @@ BEGIN {
     $DID_WE_UPDATE = $null
     $EMAIL_DATA = $null
     $GLOBAL_ENV = $null
-    $SMTP_SERVER = $null
-    $SMTP_PORT = $null
-    $FROM = $null
     $PASS = $null
-    $Creds = $null
     $BW_ITEMS = @($TEMP_BITWARDEN_DIR)
     #endregion
 
