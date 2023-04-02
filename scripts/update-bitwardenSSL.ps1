@@ -351,7 +351,7 @@ process {
         $EMAIL_PARAMS.add('UseSSL', $EMAIL_SETTINGS['UseSSL'])
 
         # If a password was given, create the credentials variable
-        if ($null -ne $PASS) {
+        if ($null -ne $EMAIL_SETTINGS.Pass) {
             $EMAIL_PARAMS.add('Creds', $EMAIL_SETTINGS['Creds'])
         }
         $EMAIL_PARAMS.add('ErrorAction', 'Stop')
